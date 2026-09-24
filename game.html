@@ -2394,6 +2394,7 @@ function netHostMsg(c,d){ if(!d||!d.t) return; let cl=NET.conns.get(c.peer);
     NET.conns.set(c.peer,cl); c.send({t:'wel',code:NET.code,pub:NET.pub,go:NET.go,host:netName(),players:netNames()}); netBroadcast({t:'lob',players:netNames()});
     if(POPOPEN&&$('card').dataset.kind==='lobby') lobbyCard(); addFeed(cl.nm+' joined!'); return; }
   if(!cl) return;
+  if(d.t==='png'){ try{ c.send({t:'pong',c:d.c}); }catch(_){} return; }
   if(d.t==='in'){ cl.inp={dx:+d.dx||0,dy:+d.dy||0,thr:Math.max(0,Math.min(1,+d.thr||0))}; return; }
   if(d.t==='spawn'){ if(!NET.go) return; netSpawnRemote(cl); return; }
   if(d.t==='dash'){ const b=cl.blob; if(b&&b.alive&&!(b.dashCd>0)){ b.dashT=.3; b.dashCd=2.5; b.squish=.6; } return; }
@@ -2428,7 +2429,7 @@ function netSnap(){ const b=[], sp=spikes.map(s=>[s.x|0,s.y|0,+s.rot.toFixed(2),
   const ev=EV?[EV.e.k,+EV.t.toFixed(1)]:null, mets=METS.map(m=>[m.x|0,m.y|0,+m.t.toFixed(2),+m.boom.toFixed(2),m.r]);
   NET.conns.forEach(cl=>{ if(!cl.c.open) return; const meta={};
     for(const o of blobs){ if(!o.alive||cl.meta.has(o.id)) continue; cl.meta.add(o.id); meta[o.id]=[o===P?netName():o.name,o.skin,o.hat||'none',o.team===undefined?-1:o.team]; }
-    const msg={t:'s',b,sp,pw,ev,mets,meta,ts:TSTOP>0?1:0};
+    const msg={t:'s',b,sp,pw,ev,mets,meta,ts:TSTOP>0?1:0,st:+T.toFixed(3)};
     if(NET.lastFood.get(cl.c.peer)===null){ const all=[...ids.values()].map(netFood); for(let i=0;i<all.length;i+=250){ try{ cl.c.send({t:'f0',f:all.slice(i,i+250),first:i===0}); }catch(_){} } NET.lastFood.set(cl.c.peer,true); } else { msg.fr=fr; if(fa.length<=250) msg.fa=fa; else for(let i=0;i<fa.length;i+=250){ try{ cl.c.send({t:'fa',f:fa.slice(i,i+250)}); }catch(_){} } }
     const mb=cl.blob; if(mb&&mb.alive) msg.me=[+Math.max(0,mb.pw.spd).toFixed(1),+Math.max(0,mb.pw.mag).toFixed(1),+Math.max(0,mb.pw.x2).toFixed(1),+Math.max(0,mb.shield).toFixed(1)];
     try{ cl.c.send(msg); }catch(_){} }); }
@@ -2446,6 +2447,7 @@ function netClientSpawn(o){ o=o||{}; if(NET.role!=='client') return; closePop();
   R0={t:0,maxM:o.big?100:20,kills:0,food:0,pows:0,dashes:0,bestRank:40,top1:false,revived:false,coins:0,x2:false,newBest:false}; if(o.big) toast('Start big! 5s shield'); S.rounds++; qAdd('rounds',1); save(); }
 function netClientMsg(d){ if(!d||!d.t) return; NET.last=performance.now();
   if(d.t==='hb') return;
+  if(d.t==='pong'){ const r=performance.now()-d.c; NET.rtt=NET.rtt?NET.rtt*.7+r*.3:r; return; }
   if(d.t==='fa'){ for(const a of d.f) food.push({id:a[0],x:a[1],y:a[2],m:a[3],c:a[4],vx:a[5],vy:a[6],perm:!!(a[7]&1),gold:!!(a[7]&2),a:0,ph:Math.random()*6}); return; }
   if(d.t==='f0'){ const mk=a=>({id:a[0],x:a[1],y:a[2],m:a[3],c:a[4],vx:a[5],vy:a[6],perm:!!(a[7]&1),gold:!!(a[7]&2),a:1,ph:Math.random()*6}); if(d.first) food=[]; for(const a of d.f) food.push(mk(a)); return; }
   if(d.t==='s') return netApply(d);
@@ -2458,16 +2460,19 @@ function netClientMsg(d){ if(!d||!d.t) return; NET.last=performance.now();
     if(P){ burst(P.x,P.y,SKINS[P.skin].c[1],14,P.r); P.alive=false; } STATE='dying'; deadT=0; document.body.classList.add('playing-off'); SFX.die(); shake=14; if(d.byn) addFeed(d.byn+' ate you!'); return; }
   if(d.t==='feed'){ if(d.ai===NET.myId||d.bi===NET.myId) return; addFeed(d.a+' ate '+d.b+'!'); return; } }
 function netApply(d){
+  if(d.st!==undefined){ const s0=performance.now()/1000-d.st; if(NET.off===undefined||s0<NET.off) NET.off=s0; else NET.off+=(s0-NET.off)*.02; }
+  const st=d.st!==undefined?d.st:performance.now()/1000;
   if(d.meta) for(const id in d.meta){ const m=d.meta[id]; let o=CB.get(+id); if(!o){ o=netNewBlob(+id); CB.set(+id,o); } o.name=m[0]; o.skin=m[1]; o.hat=m[2]; if(m[3]>=0) o.team=m[3]; }
   const seen=new Set();
   for(const a of d.b){ const id=a[0]; let o=CB.get(id); if(!o){ o=netNewBlob(id); CB.set(id,o); } seen.add(id);
-    if(o.fresh){ o.x=o.sx=o.tx=a[1]; o.y=o.sy=o.ty=a[2]; o.fresh=false; } else { o.sx=o.x; o.sy=o.y; o.tx=a[1]; o.ty=a[2]; } o.k=0;
+    if(o.fresh){ o.x=a[1]; o.y=a[2]; o.fresh=false; o.hist=[]; } o.hist.push([st,a[1],a[2]]); if(o.hist.length>8) o.hist.shift();
+    if(id===NET.myId&&o===P) netReconcile(a[1],a[2]);
     const m0=o.m; o.m=a[3]; o.r=rad(o.m); if(o.m>m0*1.02&&m0>0&&a[4]&512) o.eatT=.4; const fl=a[4]; o.vx=a[5]; o.vy=a[6];
     o.shield=fl&1?1:0; o.boss=!!(fl&2); o.ghost=fl&4?1:0; o.frozen=fl&8?1:0; o.stun=fl&16?1:0; o.star=fl&32?1:0; o.dashT=fl&64?.1:0; o.bubbled=fl&128?1:0; o.slimed=fl&256?1:0;
     o.mega=!!(fl&1024); o.hole=fl&4096?1:0; o.netp=!!(fl&8192); o.rocket=fl&16384?1:0; o.tstop=fl&32768?1:0; if(fl&512) o.mood=2; }
   for(const [id,o] of CB) if(!seen.has(id)){ if(o.alive&&!o.fresh) burst(o.x,o.y,SKINS[o.skin]?SKINS[o.skin].c[1]:'#fff',12,o.r); CB.delete(id); }
   blobs=[...CB.values()].filter(o=>!o.fresh||seen.has(o.id));
-  if(NET.myId&&CB.has(NET.myId)&&STATE==='play'){ const me=CB.get(NET.myId); if(P!==me){ P=me; P.isP=true; P.dashCd=0; P.abCd=0; P.pw={spd:0,mag:0,x2:0}; CAM.x=P.x; CAM.y=P.y; CAM.z=camBase(); } }
+  if(NET.myId&&CB.has(NET.myId)&&STATE==='play'){ const me=CB.get(NET.myId); if(P!==me){ P=me; P.isP=true; P.dashCd=0; P.abCd=0; P.pw={spd:0,mag:0,x2:0}; P.pvx=P.pvy=P.cx=P.cy=0; NET.ph=[]; CAM.x=P.x; CAM.y=P.y; CAM.z=camBase(); } }
   if(d.me&&P){ P.pw.spd=d.me[0]; P.pw.mag=d.me[1]; P.pw.x2=d.me[2]; P.shield=d.me[3]; }
   spikes=d.sp.map(s=>({x:s[0],y:s[1],rot:s[2],r:46,sh:0,temp:s[3]?1:undefined}));
   pows=d.pw.map(p=>({x:p[0],y:p[1],k:POWS[p[2]]||'spd',ph:p[0]%6,wait:p[3]?1:0,t:0}));
@@ -2479,9 +2484,8 @@ function netApply(d){
 function netNewBlob(id){ return {id,x:0,y:0,sx:0,sy:0,tx:0,ty:0,k:1,vx:0,vy:0,m:20,r:rad(20),dr:rad(20),alive:true,isP:false,seed:(id*7.3)%10,lx:0,ly:0,blink:0,blinkT:rnd(1,4),mood:0,squish:0,eatT:0,
   shield:0,dashT:0,dashCd:0,spikeCd:0,pw:{spd:0,mag:0,x2:0},kills:0,dx:1,dy:0,thr:0,skin:0,name:'',hat:'none',fresh:true}; }
 function netClientUpdate(dt){ T+=dt; if(TSTOP>0) TSTOP=Math.max(0,TSTOP-dt*.2);
-  const k=Math.min(1,dt/SNAPDT);
-  for(const b of blobs){ b.k=Math.min(1.25,b.k+k); const q=Math.min(1,b.k); b.x=b.sx+(b.tx-b.sx)*q; b.y=b.sy+(b.ty-b.sy)*q;
-    if(b.k>1){ b.x+=b.vx*dt*.5; b.y+=b.vy*dt*.5; }
+  const rt=performance.now()/1000-(NET.off||0)-NET_INTERP;
+  for(const b of blobs){ if(b!==P||STATE!=='play') netInterp(b,rt);
     b.dr+=(b.r-b.dr)*Math.min(1,dt*8); const L=Math.hypot(b.vx,b.vy)||1; b.lx+=(b.vx/L-b.lx)*dt*6; b.ly+=(b.vy/L-b.ly)*dt*6;
     b.blinkT-=dt; if(b.blinkT<0){ b.blink=1; b.blinkT=rnd(2,5); } b.blink=Math.max(0,b.blink-dt*7); b.eatT-=dt; if(b.eatT<=0&&b.mood===2) b.mood=0; b.squish=Math.max(0,b.squish-dt*2.5); }
   for(const f of food){ f.a=Math.min(1,f.a+dt*3); if(f.vx||f.vy){ f.x+=f.vx*dt; f.y+=f.vy*dt; f.vx*=.92; f.vy*=.92; if(Math.abs(f.vx)+Math.abs(f.vy)<2) f.vx=f.vy=0; } }
@@ -2496,7 +2500,9 @@ function netClientUpdate(dt){ T+=dt; if(TSTOP>0) TSTOP=Math.max(0,TSTOP-dt*.2);
   if(STATE==='play'&&P&&P.alive){ playerInput(); R0.t+=dt; R0.maxM=Math.max(R0.maxM,P.m); myRank=LB.indexOf(P)+1; if(myRank>0&&myRank<R0.bestRank){ R0.bestRank=myRank; qTop(myRank); }
     if(myRank===1&&!R0.top1&&R0.t>5){ R0.top1=true; addGems(1); SFX.top(); }
     P.dashCd-=dt; P.abCd=(P.abCd||0)-dt; P.eatT-=dt; qTime(R0.t);
-    NET.inT-=dt; if(NET.inT<=0){ NET.inT=1/15; try{ NET.hostConn.send({t:'in',dx:+P.dx.toFixed(3),dy:+P.dy.toFixed(3),thr:+P.thr.toFixed(2)}); }catch(_){} } }
+    netPredict(dt);
+    NET.pingT=(NET.pingT||0)-dt; if(NET.pingT<=0){ NET.pingT=2; try{ NET.hostConn.send({t:'png',c:performance.now()}); }catch(_){} }
+    NET.inT-=dt; if(NET.inT<=0){ NET.inT=1/20; try{ NET.hostConn.send({t:'in',dx:+P.dx.toFixed(3),dy:+P.dy.toFixed(3),thr:+P.thr.toFixed(2)}); }catch(_){} } }
   if(STATE==='dying'){ deadT+=dt; if(deadT>1.4&&!POPOPEN){ STATE='dead'; P=null; deathAd(endRound); } }
   if(performance.now()-NET.last>12000&&NET.role==='client') netLeave('Lost the connection to the host');
   let fx=CAM.x, fy=CAM.y, fr=30;
@@ -2508,7 +2514,7 @@ function netClientUpdate(dt){ T+=dt; if(TSTOP>0) TSTOP=Math.max(0,TSTOP-dt*.2);
   base(dt);
   if(NET.role==='host'){ NET.snapT-=dt; if(NET.snapT<=0){ NET.snapT=SNAPDT; if(NET.conns.size) netSnap(); } } }; })();
 /* client: dash + powers go to the host */
-(function(){ const base=tryDash; tryDash=function(){ if(NET.role!=='client'){ base(); return; } if(STATE!=='play'||POPOPEN||!P||P.dashCd>0) return; P.dashCd=2.5; P.squish=.6; R0.dashes++; qAdd('dash',1); SFX.dash(); try{ NET.hostConn.send({t:'dash'}); }catch(_){} }; })();
+(function(){ const base=tryDash; tryDash=function(){ if(NET.role!=='client'){ base(); return; } if(STATE!=='play'||POPOPEN||!P||P.dashCd>0) return; P.dashCd=2.5; P.dashT=.3; P.squish=.6; R0.dashes++; qAdd('dash',1); SFX.dash(); try{ NET.hostConn.send({t:'dash'}); }catch(_){} }; })();
 (function(){ const base=useAbility; useAbility=function(){ if(NET.role!=='client'){ base(); return; } if(STATE!=='play'||POPOPEN||!P||!S.abEq) return; const a=abBy(S.abEq); if(!a||(P.abCd||0)>0) return;
   if(a.k==='split'){ toast('SPLIT does not work online yet'); return; }
   P.abCd=abCd(a); qAdd('abil',1); SFX.pow(); floatTxt(P.x,P.y-P.r-30,a.nm+'!','#fde047',true); try{ NET.hostConn.send({t:'ab',k:a.k,lv:abLv(a.k)}); }catch(_){} }; })();
@@ -2648,6 +2654,26 @@ function srvRoomCard(){ openPop('<div class="ribh" style="background:linear-grad
       cl.canRev=false; netSpawnRemote(cl); if(cl.blob){ cl.blob.m=m; cl.blob.r=cl.blob.dr=rad(m); cl.blob.shield=sh; } } return; }
   base(c,d); }; })();
 (function(){ const base=killBlob; killBlob=function(b,by){ if(NET.role==='host'&&b&&b.netc){ const cl=NET.conns.get(b.netc); if(cl){ cl.deadM=b.m; cl.canRev=true; } } base(b,by); }; })();
+
+/* ---------- SMOOTH ONLINE MOVEMENT ----------
+   other blobs: drawn a tiny bit in the past, sliding between the two server updates around that moment (no jumping)
+   your blob: moves on your screen right away (same physics as the server) and is gently nudged if the server disagrees */
+const NET_INTERP=.15;
+function netInterp(b,rt){ const h=b.hist; if(!h||!h.length) return; if(h.length===1||rt<=h[0][0]){ b.x=h[0][1]; b.y=h[0][2]; return; }
+  for(let i=h.length-1;i>0;i--){ const a=h[i-1], c=h[i]; if(rt>=a[0]){ const span=Math.max(1e-3,c[0]-a[0]);
+      if(rt<=c[0]){ const q=(rt-a[0])/span; b.x=a[1]+(c[1]-a[1])*q; b.y=a[2]+(c[2]-a[2])*q; }
+      else { const q=Math.min(.2,rt-c[0])/span; b.x=c[1]+(c[1]-a[1])*q; b.y=c[2]+(c[2]-a[2])*q; } return; } } }
+function netPredict(dt){ const b=P, st=b.stun||b.tstop||b.bubbled; if(b.pvx===undefined){ b.pvx=b.pvy=b.cx=b.cy=0; NET.ph=NET.ph||[]; }
+  const sp=speed(b.m)*(b.dashT>0?2.7:1)*(b.rocket?1.8:b.pw.spd>0?1.35:1)*b.thr*(b.frozen?.3:1)*(b.slimed?.35:1);
+  const ax=st?0:b.dx*sp, ay=st?0:b.dy*sp, k=Math.min(1,dt*(st?2:b.dashT>0?14:7)); b.pvx+=(ax-b.pvx)*k; b.pvy+=(ay-b.pvy)*k; b.dashT-=dt;
+  b.x=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.x+b.pvx*dt)); b.y=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.y+b.pvy*dt));
+  const c=Math.min(1,dt*4), cx=b.cx*c, cy=b.cy*c; if(cx||cy){ b.x+=cx; b.y+=cy; b.cx-=cx; b.cy-=cy; for(const e of NET.ph){ e[1]+=cx; e[2]+=cy; } }
+  const now=performance.now(); NET.ph.push([now,b.x,b.y]); while(NET.ph.length>2&&now-NET.ph[0][0]>2500) NET.ph.shift(); }
+function netReconcile(sx,sy){ const b=P; if(!b||!NET.ph||!NET.ph.length){ if(b){ b.x=sx; b.y=sy; } return; }
+  const tgt=performance.now()-(NET.rtt||250); let h=NET.ph[0]; for(const e of NET.ph){ if(e[0]<=tgt) h=e; else break; }
+  const ex=sx-h[1], ey=sy-h[2], d=Math.hypot(ex,ey);
+  if(d>Math.max(350,b.r*3)){ b.x=sx; b.y=sy; b.cx=b.cy=0; NET.ph.length=0; return; }          /* teleport / respawn: jump straight there */
+  if(d<3){ b.cx=b.cy=0; return; } b.cx=ex; b.cy=ey; }
 
 /* ================= LOOKS PASS: shiny collection cards (skins / powers / hats / trails / pets) + nicer pets ================= */
 (function(){
