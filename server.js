@@ -86,5 +86,6 @@ wss.on('connection',ws=>{
   ws.on('error',()=>{});
 });
 /* close rooms nobody is in */
-setInterval(()=>{ for(const W of [...worlds.values()]) if(!W.conns.size&&Date.now()-W.empty>EMPTY_MS) killWorld(W); },15000);
+setInterval(()=>{ for(const W of [...worlds.values()]) if(W.id!=='pub1'&&!W.conns.size&&Date.now()-W.empty>EMPTY_MS) killWorld(W); },15000);
+makeWorld('pub1');                          /* the Quick Match arena is always ready - no waiting for it to start */
 server.listen(PORT,()=>log('Blob Party server on port',PORT));

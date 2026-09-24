@@ -2623,9 +2623,9 @@ function netWS(room,ms){ return new Promise(res=>{ let done=false, ws; const fin
 async function netWake(tok){ const t0=Date.now(); while(Date.now()-t0<75000){ if(tok!==NET.tok) return false;
     try{ await Promise.race([fetch(SRV_HTTP+'/?wake='+Date.now(),{mode:'no-cors',cache:'no-store'}),new Promise((_,rj)=>setTimeout(()=>rj(1),15000))]); return true; }catch(_){ await new Promise(r=>setTimeout(r,2000)); } } return false; }
 async function netServer(room,msg){ const tok=++NET.tok; netCard(msg);
-  let r=await netWS(room,5000); if(tok!==NET.tok){ r.p&&r.p.destroy(); return {cancel:true}; }
+  let r=await netWS(room,15000); if(tok!==NET.tok){ r.p&&r.p.destroy(); return {cancel:true}; }
   if(r.err&&r.err!=='noroom'&&r.err!=='busy'){ netCard('Waking up the game server...<br><small>This can take up to 1 minute the first time.</small>');
-    if(await netWake(tok)){ r=await netWS(room,12000); } if(tok!==NET.tok){ r.p&&r.p.destroy(); return {cancel:true}; } }
+    if(await netWake(tok)){ r=await netWS(room,20000); } if(tok!==NET.tok){ r.p&&r.p.destroy(); return {cancel:true}; } }
   return r; }
 async function netQuick(){ const r=await netServer('pub','Finding players online...'); if(r.cancel) return;
   if(r.c){ NET.viaServer=true; netAsClient(r.p,r.c,r.wel,true); return; } netQuickP2P(); }
