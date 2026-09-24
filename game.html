@@ -2350,7 +2350,7 @@ Object.assign(ACT,{ rst1(){ resetCard(); }, rstno(){ settingsCard(true); },
    QUICK MATCH = public rooms bp-pub-1..6 (first one in becomes the host).  FRIENDS = a 4-letter room code / invite link.  Everyone plays CLASSIC with the bots. */
 window.NETLIVE=false;
 const NET={tok:0,role:null,peer:null,conns:new Map(),code:null,pub:false,go:false,myId:0,mine:null,hostConn:null,last:0,inT:0,snapT:0,lastFood:new Map(),prevMode:null,cb:new Map(),waitSpawn:false};
-const NET_PFX='blobparty-v2-', NET_PUB=6, SNAPDT=1/12; let NET_MAX=8;
+const NET_PFX='blobparty-v2-', NET_PUB=6, SNAPDT=1/10; let NET_MAX=8;
 const SRV_HTTP=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:8790':'https://blob-party-server.onrender.com', SRV_WS=SRV_HTTP.replace(/^http/,'ws');
 function netName(){ return PNAME&&PNAME!=='You'?PNAME:(S.netName||(S.netName='Blob'+(1000+((Math.random()*9000)|0)))); }
 let FID=1;

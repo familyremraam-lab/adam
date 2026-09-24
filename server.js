@@ -33,7 +33,8 @@ function makeWorld(id){
     if(!ok&&Date.now()-start<20000) return; clearInterval(wait);
     try{ W.win.eval(SERVER_MODE); W.win.eval('srvStart('+JSON.stringify(id)+','+(W.pub?MAX_PUB:MAX_ROOM)+')'); }catch(e){ log('['+id+'] boot failed',e.message); }
     W.ready=true; W.last=Date.now();
-    W.timer=setInterval(()=>{ try{ W.win.srvTick(TICK); }catch(e){ log('['+id+'] tick error',e.message); } },TICK*1000);
+    W.lastT=Date.now(); W.timer=setInterval(()=>{ const now=Date.now(), dt=Math.min(.1,Math.max(.01,(now-W.lastT)/1000)); W.lastT=now;   /* real time: a slow server takes bigger steps, never slow-motion */
+      try{ W.win.srvTick(dt); }catch(e){ log('['+id+'] tick error',e.message); } },TICK*1000);
     log('world',id,'ready'); },200);
   return W;
 }
