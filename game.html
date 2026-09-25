@@ -2239,7 +2239,7 @@ let SLACC=0;
 /* ================= ADMIN PANEL - only for the owner's CrazyGames account (and local testing) ================= */
 const ADMIN_USERS=['adamtheguy'];
 let ADMIN=false, ADMINNC=false;
-function adminCheck(){ try{ if(['localhost','127.0.0.1'].includes(location.hostname)||location.protocol==='file:'){ ADMIN=true; return; } }catch(_){}
+function adminCheck(){ try{ if(window.BP_ADMIN_KEY||['localhost','127.0.0.1'].includes(location.hostname)||location.protocol==='file:'){ ADMIN=true; return; } }catch(_){}
   try{ if(CG.ok&&CG.S&&CG.S.user){ const p=CG.S.user.getUser(); Promise.resolve(p).then(u=>{ ADMIN=!!(u&&ADMIN_USERS.includes(String(u.username||'').replace('@','').toLowerCase())); if(ADMIN&&STATE!=='play'&&!POPOPEN) homeCard(); }).catch(()=>{});
     if(CG.S.user.addAuthListener) CG.S.user.addAuthListener(u=>{ ADMIN=!!(u&&ADMIN_USERS.includes(String(u.username||'').replace('@','').toLowerCase())); }); } }catch(_){} }
 (function(){ const base=boot; boot=async function(){ const r=await base(); adminCheck(); setTimeout(adminCheck,3000); return r; }; })();
@@ -2664,7 +2664,7 @@ function netInterp(b,rt){ const h=b.hist; if(!h||!h.length) return; if(h.length=
       if(rt<=c[0]){ const q=(rt-a[0])/span; b.x=a[1]+(c[1]-a[1])*q; b.y=a[2]+(c[2]-a[2])*q; }
       else { const q=Math.min(.2,rt-c[0])/span; b.x=c[1]+(c[1]-a[1])*q; b.y=c[2]+(c[2]-a[2])*q; } return; } } }
 function netPredict(dt){ const b=P, st=b.stun||b.tstop||b.bubbled; if(b.pvx===undefined){ b.pvx=b.pvy=b.cx=b.cy=0; NET.ph=NET.ph||[]; }
-  const sp=speed(b.m)*(b.dashT>0?2.7:1)*(b.rocket?1.8:b.pw.spd>0?1.35:1)*b.thr*(b.frozen?.3:1)*(b.slimed?.35:1);
+  const sp=speed(b.m)*(b.dashT>0?2.7:1)*(b.rocket?1.8:b.pw.spd>0?1.35:1)*b.thr*(b.frozen?.3:1)*(b.slimed?.35:1)*(ADMIN&&ADMSPD?2.2:1);
   const ax=st?0:b.dx*sp, ay=st?0:b.dy*sp, k=Math.min(1,dt*(st?2:b.dashT>0?14:7)); b.pvx+=(ax-b.pvx)*k; b.pvy+=(ay-b.pvy)*k; b.dashT-=dt;
   b.x=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.x+b.pvx*dt)); b.y=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.y+b.pvy*dt));
   const c=Math.min(1,dt*4), cx=b.cx*c, cy=b.cy*c; if(cx||cy){ b.x+=cx; b.y+=cy; b.cx-=cx; b.cy-=cy; for(const e of NET.ph){ e[1]+=cx; e[2]+=cy; } }
@@ -2674,6 +2674,49 @@ function netReconcile(sx,sy){ const b=P; if(!b||!NET.ph||!NET.ph.length){ if(b){
   const ex=sx-h[1], ey=sy-h[2], d=Math.hypot(ex,ey);
   if(d>Math.max(350,b.r*3)){ b.x=sx; b.y=sy; b.cx=b.cy=0; NET.ph.length=0; return; }          /* teleport / respawn: jump straight there */
   if(d<3){ b.cx=b.cy=0; return; } b.cx=ex; b.cy=ey; }
+
+/* ================= ADMIN ONLINE: the admin panel sends commands to the server; the SERVER checks your CrazyGames login ticket ================= */
+async function cgTok(){ try{ if(CG.ok&&CG.S&&CG.S.user&&CG.S.user.getUserToken) return await CG.S.user.getUserToken(); }catch(_){} return null; }
+async function netAdm(k,v){ const tok=window.BP_ADMIN_KEY?null:await cgTok(); try{ NET.hostConn.send({t:'adm',k,v,tok,key:window.BP_ADMIN_KEY||undefined}); }catch(_){} }
+function netAdmRoute(k){ if(NET.role!=='client') return false;
+  const close=()=>{ closePop(); };
+  if(k==='setmass'){ netAdm('mass',$('admMass')&&$('admMass').value); close(); return true; }
+  if(k.startsWith('m_')){ netAdm('mass',k.slice(2)); close(); return true; }
+  if(k.startsWith('ev_')){ netAdm(k); close(); return true; }
+  if(k==='god'){ ADMGOD=!ADMGOD; netAdm('god',ADMGOD); adminCard(); return true; }
+  if(k==='spd'){ ADMSPD=!ADMSPD; netAdm('spd',ADMSPD); adminCard(); return true; }
+  if(k==='nocd'){ ADMINNC=!ADMINNC; netAdm('nocd',ADMINNC); adminCard(); return true; }
+  if(['freeze','shrink','food','tp','army','eatall','shield'].includes(k)){ netAdm(k); close(); return true; }
+  if(k==='pwall'){ netAdm('fire',ABIL.map(a=>a.k)); close(); return true; }
+  return false; }
+(function(){ const base=ACT.adm; ACT.adm=function(el){ if(ADMIN&&netAdmRoute(el.dataset.k)) return; base(el); }; })();
+(function(){ const base=admLook; admLook=function(k,v){ base(k,v); if(NET.role==='client'&&NET.hostConn&&(k==='skin'||k==='hat')) try{ NET.hostConn.send({t:'look',skin:S.skin,hat:S.hat}); }catch(_){} }; })();
+/* online + several powers picked: the server fires them all */
+(function(){ const base=useAbility; useAbility=function(){ if(NET.role==='client'&&ADMIN&&S.admPw&&S.admPw.length>1&&STATE==='play'&&!POPOPEN&&P&&P.alive){ if((P.abCd||0)>0) return;
+    netAdm('fire',S.admPw); P.abCd=ADMINNC?0:6; SFX.pow(); return; } base(); }; })();
+/* the server said no */
+(function(){ const base=netClientMsg; netClientMsg=function(d){ if(d&&d.t==='admno'){ toast('Online admin only works on CrazyGames when you are logged in as adamtheguy'); return; } base(d); }; })();
+
+/* ---- host / server side: run admin commands for a VERIFIED admin (c.admin is set by the game server after it checks the ticket) ---- */
+function netAsP(b,fn){ const kP=P, kS=STATE; P=b; STATE='play'; try{ fn(); }catch(_){} finally{ P=kP; STATE=kS; } }
+function netHostAdm(cl,d){ const b=cl.blob, k=String(d.k||''), v=d.v;
+  if(k==='ev_end'){ evEnd(); return; }
+  if(k.startsWith('ev_')){ const e=EVS.find(x=>x.k===k.slice(3)); if(!e) return; evEnd(); EV={e,t:e.dur}; if(e.k==='boss'&&b&&b.alive) netAsP(b,()=>megaBoss()); return; }
+  if(!b||!b.alive) return;
+  if(k==='mass'){ const m=Math.min(1e300,Math.max(1,Math.floor(+v||20))); b.m=m; b.r=rad(m); }
+  if(k==='god') cl.god=!!v; if(k==='spd') cl.spd=!!v; if(k==='nocd') cl.nocd=!!v;
+  if(k==='shield') b.shield=30;
+  if(k==='freeze') for(const o of blobs) if(o!==b&&!o.netc&&!o.cell) o.frozen=10;
+  if(k==='shrink') for(const o of blobs) if(o!==b&&!o.netc&&!o.cell){ o.m=Math.max(10,o.m*.5); o.r=rad(o.m); }
+  if(k==='food') for(let i=0;i<300;i++){ const a=Math.random()*6.283, r=rnd(b.r+40,b.r+900); food.push(newFood({x:Math.max(20,Math.min(WORLD-20,b.x+Math.cos(a)*r)),y:Math.max(20,Math.min(WORLD-20,b.y+Math.sin(a)*r)),m:6,c:FOODC[i%FOODC.length],chunk:true})); }
+  if(k==='tp'){ const t=blobs.filter(o=>o!==b&&o.alive&&!o.cell).sort((u,w)=>w.m-u.m)[0]; if(t){ const a=Math.random()*6.283; b.x=Math.max(b.r,Math.min(WORLD-b.r,t.x+Math.cos(a)*(t.r+b.r+80))); b.y=Math.max(b.r,Math.min(WORLD-b.r,t.y+Math.sin(a)*(t.r+b.r+80))); b.shield=Math.max(b.shield,2); } }
+  if(k==='army') netAsP(b,()=>{ for(let i=0;i<3;i++) megaBoss(); });
+  if(k==='eatall'){ const list=blobs.filter(o=>o!==b&&!o.netc&&!o.cell&&o.alive).sort((u,w)=>Math.hypot(u.x-b.x,u.y-b.y)-Math.hypot(w.x-b.x,w.y-b.y)).slice(0,10); for(const o of list){ b.m+=o.m; killBlob(o,b); } }
+  if(k==='fire'&&Array.isArray(v)){ let mx=0; for(const key of v.slice(0,20)){ b.abCd=0; netRemoteAbility(b,String(key),ABMAX); mx=Math.max(mx,b.abCd||0); } b.abCd=cl.nocd?0:mx; } }
+(function(){ const base=netHostMsg; netHostMsg=function(c,d){ if(d&&d.t==='adm'){ const cl=NET.conns.get(c.peer); if(cl&&c.admin===true) netHostAdm(cl,d); return; } base(c,d); }; })();
+(function(){ const base=update; update=function(dt){ if(NET.role!=='host'){ base(dt); return; } const pre=[];
+  NET.conns.forEach(cl=>{ const b=cl.blob; if(!b||!b.alive) return; if(cl.god) b.shield=Math.max(b.shield,.6); if(cl.nocd){ b.abCd=0; b.dashCd=0; } if(cl.spd) pre.push([b,b.x,b.y]); });
+  base(dt); for(const [b,x,y] of pre){ b.x=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.x+(b.x-x)*1.2)); b.y=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.y+(b.y-y)*1.2)); } }; })();
 
 /* ================= LOOKS PASS: shiny collection cards (skins / powers / hats / trails / pets) + nicer pets ================= */
 (function(){
