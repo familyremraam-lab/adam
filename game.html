@@ -606,7 +606,7 @@ function startRound(){
   R0={t:0,maxM:20,kills:0,food:0,pows:0,dashes:0,bestRank:blobs.length,top1:false,revived:false,coins:0,x2:false,newBest:false};
   S.rounds++; qAdd('rounds',1); if(S.diff>=2) qAdd('hardround',1); save();
   document.body.classList.remove('playing-off'); musStart();
-  if(S.tut<1) showHint(TOUCH?'Drag anywhere to move!':'Move your mouse to steer!'); else $('hint').hidden=true;
+  if(S.tut<1) showHint(TOUCH?'Use the joystick (bottom left) to move!':'Move your mouse to steer!'); else $('hint').hidden=true;
 }
 function revive(){
   const [x,y]=freeSpot(500); P.x=x; P.y=y; P.vx=P.vy=0; P.m=Math.max(20,Math.floor(R0.deadM*.5)); P.r=P.dr=rad(P.m); P.alive=true; P.shield=3;
@@ -645,10 +645,10 @@ const xpNeed=l=>Math.floor(80+50*l);
 const IN={mx:0,my:0,mouse:false,joy:null,keys:{}};
 cv.addEventListener('pointerdown',e=>{ ac(); musStart();
   if(e.pointerType==='mouse'){ IN.mouse=true; IN.mx=e.clientX; IN.my=e.clientY; if(e.button===0) tryDash(); }
-  else if(!IN.joy){ IN.joy={id:e.pointerId,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY}; } });
+  else if(!IN.joy&&e.clientX<W*.6){ const jb=joyBase(); IN.joy={id:e.pointerId,x0:jb.x,y0:jb.y,x:e.clientX,y:e.clientY}; } });   /* FIXED joystick: its base never moves (user asked) */
 addEventListener('pointermove',e=>{ if(e.pointerType==='mouse'){ IN.mouse=true; IN.mx=e.clientX; IN.my=e.clientY; }
   else if(IN.joy&&IN.joy.id===e.pointerId){ IN.joy.x=e.clientX; IN.joy.y=e.clientY; const dx=IN.joy.x-IN.joy.x0, dy=IN.joy.y-IN.joy.y0, L=Math.hypot(dx,dy), M=70;
-    if(L>M){ IN.joy.x0=IN.joy.x-dx/L*M; IN.joy.y0=IN.joy.y-dy/L*M; } } });
+  } });
 const joyEnd=e=>{ if(IN.joy&&IN.joy.id===e.pointerId) IN.joy=null; };
 addEventListener('pointerup',joyEnd); addEventListener('pointercancel',joyEnd);
 const keyOf=e=>e.code&&/^Key[A-Z]$/.test(e.code)?e.code.slice(3).toLowerCase():e.key.toLowerCase();   /* physical key: WASD = ZQSD on AZERTY keyboards */
@@ -854,8 +854,8 @@ function draw(){
   /* ---- HUD (screen space) ---- */
   g.setTransform(DPR,0,0,DPR,0,0);
   if(STATE==='play'||STATE==='dying') drawHUD();
-  if(IN.joy&&STATE==='play'){ const j=IN.joy; g.globalAlpha=.5; g.fillStyle='rgba(255,255,255,.15)'; g.strokeStyle='#fff'; g.lineWidth=3;
-    g.beginPath(); g.arc(j.x0,j.y0,70,0,6.283); g.fill(); g.stroke(); g.globalAlpha=.8; g.fillStyle='#fff'; g.beginPath(); g.arc(j.x,j.y,30,0,6.283); g.fill(); g.globalAlpha=1; }
+  if(TOUCH&&STATE==='play'){ const jb=joyBase(), j=IN.joy||{x0:jb.x,y0:jb.y,x:jb.x,y:jb.y}; { const dx=j.x-j.x0, dy=j.y-j.y0, L=Math.hypot(dx,dy), k=L>60?60/L:1; j.kx=j.x0+dx*k; j.ky=j.y0+dy*k; } g.globalAlpha=.5; g.fillStyle='rgba(255,255,255,.15)'; g.strokeStyle='#fff'; g.lineWidth=3;
+    g.beginPath(); g.arc(j.x0,j.y0,70,0,6.283); g.fill(); g.stroke(); g.globalAlpha=IN.joy?.85:.45; g.fillStyle='#fff'; g.beginPath(); g.arc(j.kx,j.ky,30,0,6.283); g.fill(); g.globalAlpha=1; }
   if(P) { const b=$('dashBtn'); const p=P.dashCd>0?Math.max(0,P.dashCd/2.5*100):0; b.style.setProperty('--p',p+'%'); b.classList.toggle('cd',p>0); b.classList.toggle('ready',p<=0); const cn=b.querySelector('.cdn'), tx=p>0?Math.ceil(P.dashCd)+'':''; if(cn.textContent!==tx) cn.textContent=tx; }
   abilButton();
 }
@@ -920,7 +920,7 @@ function drawHUD(){
   for(let i=0;i<rows;i++) row(i,LB[i],ly+44+i*lh);
   if(myRank>rows&&P&&P.alive){ g.fillStyle='rgba(255,255,255,.25)'; g.fillRect(lx+14,ly+44+rows*lh-lh/2+2,lw-28,2); row(myRank-1,P,ly+44+rows*lh+6); }
   /* minimap: spikes, power-ups, the king and you */
-  const ms=small?90:116, mx=12, my=H-ms-12; panel(mx,my,ms,ms,14);
+  const ms=small?90:116, mx=TOUCH?W-ms-12:12, my=TOUCH?ly+lhh+8:H-ms-12; MMPOS.x=mx; MMPOS.y=my; MMPOS.s=ms; panel(mx,my,ms,ms,14);   /* phones: mini-map top-right, away from the joystick */
   const mk=(ms-8)/WORLD, ox=mx+4, oy=my+4;
   g.strokeStyle='rgba(255,255,255,.08)'; g.lineWidth=1; g.beginPath(); for(let q=1;q<4;q++){ g.moveTo(ox+q*(ms-8)/4,oy); g.lineTo(ox+q*(ms-8)/4,oy+ms-8); g.moveTo(ox,oy+q*(ms-8)/4); g.lineTo(ox+ms-8,oy+q*(ms-8)/4); } g.stroke();
   g.fillStyle='#4ade80'; for(const s of spikes){ g.beginPath(); g.arc(ox+s.x*mk,oy+s.y*mk,2,0,6.283); g.fill(); }
@@ -963,7 +963,8 @@ addEventListener('pagehide',save);
 const ZSPR={};
 function zoneSprite(c){ if(ZSPR[c]) return ZSPR[c]; const s=document.createElement('canvas'); s.width=s.height=128; const x=s.getContext('2d');
   const gr=x.createRadialGradient(64,64,1,64,64,64); gr.addColorStop(0,c); gr.addColorStop(1,'rgba(0,0,0,0)'); x.fillStyle=gr; x.fillRect(0,0,128,128); return ZSPR[c]=s; }
-let AUTOLOW=false, FOODK=1; const FGRID=[];   /* FOODK: RUSH mode makes every dot worth x3 */
+let AUTOLOW=false, FOODK=1; const FGRID=[]; const MMPOS={x:12,y:0,s:116};
+function joyBase(){ return {x:Math.max(95,Math.min(140,W*.14)), y:H-Math.max(115,Math.min(160,H*.2))}; }   /* FOODK: RUSH mode makes every dot worth x3 */
 function GFXQ(){ const m=(typeof S!=='undefined'&&S.gfx)||0; return m===2?0:m===1?1:(AUTOLOW?0:1); }
 
 /* ================= BLOB PARTY.IO - menus, quests, daily gift, ads, boot ================= */
@@ -1072,7 +1073,7 @@ function skinsCard(sel,still){ const s=SKINS[sel], own=!!S.own[sel], on=S.skin==
 /* ---------- settings ---------- */
 function settingsCard(still){ if(POPOPEN&&!still&&$('card').dataset.kind!=='set'){}
   openPop('<h2>SETTINGS</h2><div class="srow">Sound effects<div class="tgl'+(S.sfx?' on':'')+'" data-a="sfx"></div></div><div class="srow">Music<div class="tgl'+(S.mus?' on':'')+'" data-a="mus"></div></div>'+
-    '<p style="font-size:14px;text-align:left;opacity:.9"><b>How to play</b><br>'+(TOUCH?'Drag anywhere to move. Tap DASH to zoom. Tap the ability button to use your ability.':'Move the mouse (or WASD) to steer. Click or SPACE to DASH. E = ability (like SPLIT or SHOOT).')+
+    '<p style="font-size:14px;text-align:left;opacity:.9"><b>How to play</b><br>'+(TOUCH?'Use the joystick (bottom left) to move. Tap DASH to zoom. Tap the ability button to use your ability.':'Move the mouse (or WASD) to steer. Click or SPACE to DASH. E = ability (like SPLIT or SHOOT).')+
     '<br>Eat dots to grow. Eat blobs smaller than you. Run from bigger ones!</p><button class="btn huge" data-a="resume">'+(STATE==='play'?'RESUME':'OK')+'</button>',still);
   if(STATE!=='play') ACT.resume=()=>{ (BACKTO||(()=>homeCard(true)))(); }; else ACT.resume=()=>closePop(); }
 
@@ -1600,7 +1601,7 @@ function modeHUD(){ if(MODE()==='classic') return;
   if(MODE()==='royale'&&ZONE){ const alive=blobs.filter(b=>!b.cell&&b.alive).length, k=ZONE.t-ZONE.wait;
     hudText('ALIVE '+alive,x0+10,y+h*.32,13*sc,'#fde047');
     hudText(k<0?'ZONE IN '+fmtT(-k):ZONE.r>260?'ZONE SHRINKING':'FINAL ZONE!',x0+10,y+h*.72,11*sc,k<0?'#fff':'#fca5a5');
-    const ms=small?90:116, mx=12, my=H-ms-12, mk=(ms-8)/WORLD; g.save(); g.beginPath(); g.rect(mx+4,my+4,ms-8,ms-8); g.clip();
+    const ms=MMPOS.s, mx=MMPOS.x, my=MMPOS.y, mk=(ms-8)/WORLD; g.save(); g.beginPath(); g.rect(mx+4,my+4,ms-8,ms-8); g.clip();
     g.lineWidth=2; g.strokeStyle='#f87171'; g.beginPath(); g.arc(mx+4+ZONE.x*mk,my+4+ZONE.y*mk,Math.max(1,ZONE.r*mk),0,6.283); g.stroke(); g.restore(); }
   if(MODE()==='teams'){ const a=teamMass(0), b=teamMass(1), f=a/Math.max(1,a+b);
     hudText('BLUE '+Math.round(f*100)+'%',x0+10,y+h*.3,12*sc,'#93c5fd'); hudText(Math.round((1-f)*100)+'% RED',x0+mw-10,y+h*.3,12*sc,'#fca5a5','right');
@@ -2719,15 +2720,15 @@ function netHostAdm(cl,d){ const b=cl.blob, k=String(d.k||''), v=d.v;
   base(dt); for(const [b,x,y] of pre){ b.x=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.x+(b.x-x)*1.2)); b.y=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.y+(b.y-y)*1.2)); } }; })();
 
 /* ---------- SAFE MENU ONLINE: the world can't pause, so while a menu is open your blob stops and gets a shield (max 30 s) ---------- */
-(function(){ const base=playerInput; playerInput=function(){ if(window.NETLIVE&&POPOPEN&&P){ P.thr=0; return; } base(); }; })();
+(function(){ const base=playerInput; playerInput=function(){ if(window.NETLIVE&&(POPOPEN||document.getElementById('chatbar'))&&P){ P.thr=0; return; } base(); }; })();
 let NETAFK=false;
-function netAfkSync(){ const want=!!(NET.role==='client'&&POPOPEN&&STATE==='play'&&P&&P.alive); if(want===NETAFK) return; NETAFK=want; try{ NET.hostConn&&NET.hostConn.send({t:'afk',on:want}); }catch(_){} }
+function netAfkSync(){ const want=!!(NET.role==='client'&&(POPOPEN||document.getElementById('chatbar'))&&STATE==='play'&&P&&P.alive); if(want===NETAFK) return; NETAFK=want; try{ NET.hostConn&&NET.hostConn.send({t:'afk',on:want}); }catch(_){} }
 (function(){ const base=openPop; openPop=function(h,s){ base(h,s); netAfkSync(); }; })();
 (function(){ const base=closePop; closePop=function(){ base(); netAfkSync(); }; })();
 (function(){ const base=netHostMsg; netHostMsg=function(c,d){ if(d&&d.t==='afk'){ const cl=NET.conns.get(c.peer); if(cl) cl.afk=d.on?Date.now():0; return; } base(c,d); }; })();
 (function(){ const base=update; update=function(dt){
   if(NET.role==='host'){ const now=Date.now(); NET.conns.forEach(cl=>{ const b=cl.blob; if(!b||!b.alive||!cl.afk) return; if(now-cl.afk>30000){ cl.afk=0; return; } b.shield=Math.max(b.shield,.5); cl.inp.thr=0; b.thr=0; });
-    if(POPOPEN&&STATE==='play'&&P&&P.alive) P.shield=Math.max(P.shield,.5); }
+    if((POPOPEN||document.getElementById('chatbar'))&&STATE==='play'&&P&&P.alive) P.shield=Math.max(P.shield,.5); }
   base(dt); }; })();
 
 /* ================= CRAZYGAMES MULTIPLAYER RULES =================
@@ -2750,6 +2751,63 @@ function cgRoom(on){ try{ if(!(CG.ok&&CG.S.game)) return; if(on&&CG.S.game.updat
 (function(){ const base=netJoin; netJoin=function(code){ if(String(code).toLowerCase()==='pub'){ netQuick(); return; } return base(code); }; })();
 /* settings: say which name other players see */
 (function(){ const base=settingsCard; settingsCard=function(still){ base(still); const r=document.querySelector('#card .nickrow'); if(r&&CGNAME&&!r.querySelector('.cgnote')) r.insertAdjacentHTML('afterend','<p class="cgnote" style="font-size:11px;opacity:.8;margin:-4px 0 6px">Online, other players see your CrazyGames name: <b>'+esc(CGNAME)+'</b></p>'); }; })();
+
+/* ================= CHAT (online only) - bad-word filter + anti-spam on the host/server, follows CrazyGames' disableChat ================= */
+const CHATBAD=BADW.concat(['bastard','damn','crap','piss','retard','idiot','stupid','dumb','loser','wtf','stfu','porno','nude','naked','boob','penis','vagina','kill urself']);
+function chatClean(s){ s=String(s||'').replace(/[<>]/g,'').replace(/\s+/g,' ').trim().slice(0,80); if(!s) return '';
+  for(const w of CHATBAD){ const pat=w.replace(/ /g,'').split('').map(ch=>ch.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('[^a-z0-9]*'); s=s.replace(new RegExp(pat,'gi'),m=>'*'.repeat(Math.min(6,m.length))); }
+  return s.replace(/(https?:\/\/|www\.)\S+/gi,'***'); }                 /* no links either */
+const chatOff=()=>!!(S.chatOff||(CG.ok&&CG.S&&CG.S.game&&CG.S.game.settings&&CG.S.game.settings.disableChat));
+const CHAT=[];
+function chatAdd(n,m,me){ if(chatOff()) return; CHAT.push({n,m,me,t:performance.now()}); if(CHAT.length>6) CHAT.shift(); chatDraw(); try{ tone(me?700:900,.05,'sine',.08); }catch(_){} }
+function chatDraw(){ let box=$('chatbox'); if(!box){ box=document.createElement('div'); box.id='chatbox'; document.body.appendChild(box); }
+  const now=performance.now(), live=CHAT.filter(c=>now-c.t<15000);
+  box.innerHTML=live.map(c=>'<div class="chatl'+(c.me?' me':'')+'"><b>'+esc(c.n)+':</b> '+esc(c.m)+'</div>').join(''); box.style.display=live.length&&NET.role?'':'none'; }
+setInterval(()=>{ if(CHAT.length) chatDraw(); },1000);
+function chatSend(m){ m=String(m||'').trim().slice(0,80); if(!m||!NET.role||chatOff()) return;
+  if(NET.role==='client'){ try{ NET.hostConn.send({t:'chat',m}); }catch(_){} return; }
+  const c=chatClean(m); if(!c) return; netBroadcast({t:'chat',n:netName(),m:c}); chatAdd(netName(),c,true); }
+/* host / server: check, clean and pass on (max 1 message every 1.5 s per player) */
+(function(){ const base=netHostMsg; netHostMsg=function(c,d){ if(d&&d.t==='chat'){ const cl=NET.conns.get(c.peer); if(!cl) return; const now=Date.now();
+    if(now-(cl.chatT||0)<1500) return; cl.chatT=now; const m=chatClean(d.m); if(!m) return;
+    NET.conns.forEach(o=>{ try{ if(o.c.open) o.c.send({t:'chat',n:cl.nm,m,me:o===cl}); }catch(_){} }); if(netName()!=='Server') chatAdd(cl.nm,m,false); return; } base(c,d); }; })();
+(function(){ const base=netClientMsg; netClientMsg=function(d){ if(d&&d.t==='chat'){ chatAdd(d.n,d.m,!!d.me); return; } base(d); }; })();
+/* the chat button + typing bar with quick messages */
+const QUICKCHAT=['Hi!','GG','Nice!','Help!','LOL','Oops!','Team up?','Run!'];
+function chatUI(){ let b=$('chatBtn'); if(!b){ b=document.createElement('div'); b.id='chatBtn'; b.className='ibtn'; b.textContent='\u{1F4AC}'; document.body.appendChild(b);
+    b.addEventListener('pointerdown',e=>{ e.stopPropagation(); }); b.addEventListener('click',()=>{ SFX.click(); chatOpen(); }); }
+  b.style.display=NET.role&&STATE==='play'&&!chatOff()?'':'none'; }
+setInterval(chatUI,500);
+function chatOpen(){ if(!NET.role||chatOff()) return; let bar=$('chatbar'); if(bar){ bar.querySelector('input').focus(); return; }
+  bar=document.createElement('div'); bar.id='chatbar';
+  bar.innerHTML='<div class="qchips">'+QUICKCHAT.map(q=>'<button class="qchip">'+q+'</button>').join('')+'</div><div class="chatrow"><input maxlength="80" placeholder="Type a message..." autocomplete="off"><button class="btn small" style="margin:0">SEND</button><button class="btn small gray" style="margin:0">✕</button></div>';
+  document.body.appendChild(bar); netAfkSync();                        /* chatting = frozen + shielded, like a menu */
+  const inp=bar.querySelector('input'), btns=bar.querySelectorAll('.chatrow .btn');
+  const auto=setTimeout(()=>{ if(bar.isConnected){ done(); toast('Chat closed - you can only be safe for 30 seconds'); } },30000);   /* safe while typing: max 30 s */
+  const done=()=>{ clearTimeout(auto); bar.remove(); netAfkSync(); }, go=()=>{ chatSend(inp.value); done(); };
+  inp.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter') go(); if(e.key==='Escape') done(); }); inp.addEventListener('keyup',e=>e.stopPropagation());
+  btns[0].addEventListener('click',go); btns[1].addEventListener('click',done);
+  bar.querySelectorAll('.qchip').forEach(q=>q.addEventListener('click',()=>{ chatSend(q.textContent); done(); }));
+  bar.addEventListener('pointerdown',e=>e.stopPropagation()); if(!TOUCH) inp.focus(); }
+addEventListener('keydown',e=>{ if(e.key==='Enter'&&NET.role&&STATE==='play'&&!POPOPEN&&!$('chatbar')&&!chatOff()){ e.preventDefault(); chatOpen(); } });
+/* Settings: Chat ON / OFF (or "turned off by CrazyGames") */
+(function(){ const base=settingsCard; settingsCard=function(still){ base(still); const c=$('card'), rows=c.querySelectorAll('.srow'); if(!rows.length||c.querySelector('.chatrowset')) return;
+  const cg=CG.ok&&CG.S.game&&CG.S.game.settings&&CG.S.game.settings.disableChat;
+  const w=document.createElement('div'); w.className='srow chatrowset'; w.innerHTML='Online chat'+(cg?'<small style="opacity:.8">turned off by CrazyGames</small>':'<div class="tgl'+(S.chatOff?'':' on')+'" data-a="chattgl"></div>'); rows[rows.length-1].after(w); bindActs(w); }; })();
+ACT.chattgl=()=>{ S.chatOff=!S.chatOff; save(); if(S.chatOff){ CHAT.length=0; chatDraw(); } settingsCard(true); };
+(function(){ const base=boot; boot=async function(){ const r=await base(); try{ if(CG.ok&&CG.S.game.addSettingsChangeListener) CG.S.game.addSettingsChangeListener(()=>{ if(chatOff()){ CHAT.length=0; chatDraw(); const b=$('chatbar'); if(b) b.remove(); } }); }catch(_){} return r; }; })();
+(function(){ const base=netLeave; netLeave=function(msg){ base(msg); CHAT.length=0; chatDraw(); const b=$('chatbar'); if(b) b.remove(); }; })();
+/* CrazyGames checks that the invite link is used: make it as soon as you are in a room */
+(function(){ const base=cgRoom; cgRoom=function(on){ base(on); try{ if(on&&CG.ok&&CG.S.game.inviteLink) NET.invite=CG.S.game.inviteLink({room:NET.pub?'pub':NET.code}); }catch(_){} }; })();
+{ const css=document.createElement('style'); css.textContent=
+'#chatbox{position:fixed;left:12px;bottom:150px;z-index:40;max-width:min(360px,70vw);display:flex;flex-direction:column;gap:3px;pointer-events:none}'+
+'.chatl{background:rgba(20,8,48,.72);border:2px solid rgba(255,255,255,.25);border-radius:10px;padding:3px 9px;font-weight:700;font-size:13px;color:#fff;overflow-wrap:anywhere}.chatl b{color:#fde047}.chatl.me b{color:#4ade80}'+
+'#chatBtn{position:fixed;left:10px;top:64px;width:44px;height:44px;font-size:22px;display:grid;place-items:center;z-index:41;cursor:pointer}'+
+'#chatbar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;width:min(560px,94vw);background:linear-gradient(#6d28d9,#3b0f8a);border:3px solid #fff;border-radius:16px;padding:8px;box-shadow:0 0 0 3px #1c1233}'+
+'#chatbar .chatrow{display:flex;gap:6px;margin-top:6px}#chatbar input{flex:1;min-width:0;font:700 15px Fredoka,sans-serif;padding:6px 10px;border-radius:12px;border:3px solid #fff;background:#1c1233;color:#fff}'+
+'.qchips{display:flex;flex-wrap:wrap;gap:5px}.qchip{font:700 13px Fredoka,sans-serif;color:#fff;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.5);border-radius:99px;padding:3px 10px;cursor:pointer}'+
+'@media (pointer:coarse){ #chatbox{bottom:auto;top:34%} #chatbar{bottom:auto;top:12px} }';
+document.head.appendChild(css); }
 
 /* ================= LOOKS PASS: shiny collection cards (skins / powers / hats / trails / pets) + nicer pets ================= */
 (function(){
@@ -2835,6 +2893,8 @@ const b3=drawPet; drawPet=function(g,k,r,t,dir){ dir=dir||1; const lw=Math.max(1
     g.beginPath(); g.moveTo(0,-1); g.quadraticCurveTo(.15,-.15,1,0); g.quadraticCurveTo(.15,.15,0,1); g.quadraticCurveTo(-.15,.15,-1,0); g.quadraticCurveTo(-.15,-.15,0,-1); g.fill(); }
   g.restore(); };
 })();
+/* phones: the first-round tip sits above the fixed joystick */
+{ const css=document.createElement('style'); css.textContent='@media (pointer:coarse){ #hint{ bottom:auto!important; top:60%!important } }'; document.head.appendChild(css); }
 
 /* ================= BLOB PARTY - ARABIC (same engine as Party Pads' pL.js): Settings -> Language ================= */
 const AR={
@@ -2858,7 +2918,7 @@ const AR={
  'Max # pieces at once!':'# قطع كحد أقصى!','Graphics set to LOW to keep # FPS':'تم ضبط الرسومات على منخفضة للحفاظ على # إطار','No ad right now - here is your reward anyway!':'لا يوجد إعلان الآن - إليك مكافأتك على أي حال!',
  'No more gem ads today - come back tomorrow!':'لا مزيد من إعلانات الجواهر اليوم - عُد غداً!',
  /* first-round hints + controls picture */
- 'Move your mouse to steer!':'حرّك الفأرة للتوجيه!','Drag anywhere to move!':'اسحب في أي مكان للتحرك!','Click or press SPACE to DASH!':'انقر أو اضغط مسافة للاندفاع!',
+ 'Move your mouse to steer!':'حرّك الفأرة للتوجيه!','Drag anywhere to move!':'اسحب في أي مكان للتحرك!','Use the joystick (bottom left) to move!':'استخدم عصا التحكم (أسفل اليسار) للتحرك!','Use the joystick (bottom left) to move. Tap DASH to zoom. Tap the ability button to use your ability.':'استخدم عصا التحكم (أسفل اليسار) للتحرك. اضغط اندفاع للانطلاق. اضغط زر القوة لاستخدامها.','Click or press SPACE to DASH!':'انقر أو اضغط مسافة للاندفاع!',
  'Tap DASH to zoom forward!':'اضغط اندفاع لتنطلق للأمام!','Eat smaller blobs - run from bigger ones!':'كُل البلوبات الأصغر - واهرب من الأكبر!',
  'MOVE':'تحرّك','DASH':'اندفاع','POWER':'القوة','CLICK':'نقر','SPACE':'مسافة','or':'أو','DRAG':'اسحب','to move':'للتحرك','TAP':'اضغط','to zoom':'للانطلاق',
  /* after a round */
@@ -2872,7 +2932,7 @@ const AR={
  /* settings */
  'SETTINGS':'الإعدادات','Sound effects':'المؤثرات الصوتية','Music':'الموسيقى','Graphics':'الرسومات','Language':'اللغة','AUTO':'تلقائي','HIGH':'عالية','LOW':'منخفضة',
  'AUTO keeps the game at # FPS. LOW = faster on slow computers and phones.':'التلقائي يحافظ على # إطار. المنخفضة = أسرع على الأجهزة البطيئة.',
- 'How to play':'طريقة اللعب','Your name':'اسمك','SAVE':'حفظ','Name saved!':'تم حفظ الاسم!','That name is not allowed':'هذا الاسم غير مسموح','Your name needs # letters or more':'اسمك يحتاج # أحرف أو أكثر','PLAY ONLINE':'العب أونلاين','QUICK MATCH':'مباراة سريعة','CREATE ROOM':'أنشئ غرفة','JOIN ROOM':'ادخل غرفة','LEAVE ROOM':'اخرج من الغرفة','START!':'ابدأ!','COPY INVITE LINK':'انسخ رابط الدعوة','LEAVE GAME':'اترك اللعبة','YOU LEFT THE GAME':'تركت اللعبة','LEAVE':'خروج','CANCEL':'إلغاء','Join random players online':'العب مع لاعبين عشوائيين','Get a code and play with your friends':'احصل على رمز والعب مع أصدقائك','Tell your friends this code:':'أعطِ أصدقاءك هذا الرمز:','Looking for players online...':'نبحث عن لاعبين...','Making your room...':'نجهز غرفتك...','# / # players':'# / # لاعبين','Invite link copied!':'تم نسخ رابط الدعوة!','You left the game':'تركت اللعبة','You left the room':'خرجت من الغرفة','The host left the game':'المضيف ترك اللعبة','You are the HOST - players will join you!':'أنت المضيف - سينضم اللاعبون إليك!','⚠ RESET EVERYTHING':'⚠ إعادة ضبط كل شيء','RESET EVERYTHING?':'إعادة ضبط كل شيء؟','NO, KEEP IT':'لا، احتفظ به','YES, RESET':'نعم، أعد الضبط','Everything was reset!':'تمت إعادة ضبط كل شيء!','You can NOT get them back!':'لا يمكنك استعادتها!','This deletes ALL your coins, gems, skins, hats, trails, pets, powers, levels, quests and Blob Pass stars.':'هذا يحذف كل عملاتك وجواهرك وشخصياتك وقبعاتك وآثارك وحيواناتك وقواك ومستوياتك ومهامك ونجوم التذكرة.','RESUME':'متابعة','OK':'حسناً','BACK':'رجوع','CLOSE':'إغلاق',
+ 'How to play':'طريقة اللعب','Chat closed - you can only be safe for # seconds':'أُغلقت الدردشة - يمكنك البقاء آمناً # ثانية فقط','Online chat':'الدردشة أونلاين','turned off by CrazyGames':'أوقفتها CrazyGames','Type a message...':'اكتب رسالة...','SEND':'إرسال','Your name':'اسمك','SAVE':'حفظ','Name saved!':'تم حفظ الاسم!','That name is not allowed':'هذا الاسم غير مسموح','Your name needs # letters or more':'اسمك يحتاج # أحرف أو أكثر','PLAY ONLINE':'العب أونلاين','QUICK MATCH':'مباراة سريعة','CREATE ROOM':'أنشئ غرفة','JOIN ROOM':'ادخل غرفة','LEAVE ROOM':'اخرج من الغرفة','START!':'ابدأ!','COPY INVITE LINK':'انسخ رابط الدعوة','LEAVE GAME':'اترك اللعبة','YOU LEFT THE GAME':'تركت اللعبة','LEAVE':'خروج','CANCEL':'إلغاء','Join random players online':'العب مع لاعبين عشوائيين','Get a code and play with your friends':'احصل على رمز والعب مع أصدقائك','Tell your friends this code:':'أعطِ أصدقاءك هذا الرمز:','Looking for players online...':'نبحث عن لاعبين...','Making your room...':'نجهز غرفتك...','# / # players':'# / # لاعبين','Invite link copied!':'تم نسخ رابط الدعوة!','You left the game':'تركت اللعبة','You left the room':'خرجت من الغرفة','The host left the game':'المضيف ترك اللعبة','You are the HOST - players will join you!':'أنت المضيف - سينضم اللاعبون إليك!','⚠ RESET EVERYTHING':'⚠ إعادة ضبط كل شيء','RESET EVERYTHING?':'إعادة ضبط كل شيء؟','NO, KEEP IT':'لا، احتفظ به','YES, RESET':'نعم، أعد الضبط','Everything was reset!':'تمت إعادة ضبط كل شيء!','You can NOT get them back!':'لا يمكنك استعادتها!','This deletes ALL your coins, gems, skins, hats, trails, pets, powers, levels, quests and Blob Pass stars.':'هذا يحذف كل عملاتك وجواهرك وشخصياتك وقبعاتك وآثارك وحيواناتك وقواك ومستوياتك ومهامك ونجوم التذكرة.','RESUME':'متابعة','OK':'حسناً','BACK':'رجوع','CLOSE':'إغلاق',
  'Move the mouse (or WASD) to steer. Click or SPACE to DASH. E = ability (like SPLIT or SHOOT).':'حرّك الفأرة (أو WASD) للتوجيه. انقر أو مسافة للاندفاع. E = القوة (مثل الانقسام أو الإطلاق).',
  'Drag anywhere to move. Tap DASH to zoom.':'اسحب في أي مكان للتحرك. اضغط اندفاع للانطلاق.','Eat dots to grow. Eat blobs smaller than you. Run from bigger ones!':'كُل النقاط لتكبر. كُل البلوبات الأصغر منك. واهرب من الأكبر!',
  /* daily + quests */
