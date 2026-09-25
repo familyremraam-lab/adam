@@ -1140,7 +1140,7 @@ async function boot(){
   }
   STORE=(CG.ok&&CG.S.data)?CG.S.data:window.localStorage;
   load();
-  try{ if(CG.ok&&CG.S.user){ const u=await Promise.race([CG.S.user.getUser(),new Promise(r=>setTimeout(()=>r(null),1500))]); if(u&&u.username) PNAME=String(u.username).slice(0,16); } }catch(_){}
+  try{ if(CG.ok&&CG.S.user) Promise.resolve(CG.S.user.getUser()).then(u=>{ if(u&&u.username&&!S.nick) PNAME=String(u.username).slice(0,16); if(P&&P.isP&&!P.netc&&u&&u.username&&!S.nick) P.name=PNAME; }).catch(()=>{}); }catch(_){}   /* don't make loading wait for the username */
   resize(); document.querySelectorAll('img[data-ic]').forEach(im=>{ im.src=iconURL(im.dataset.ic,96); });
   $('dashKey').textContent=TOUCH?'':'SPACE';
   initWorld(); LASTAD=Date.now(); document.body.classList.add('playing-off');
@@ -2400,7 +2400,7 @@ function netHostMsg(c,d){ if(!d||!d.t) return; let cl=NET.conns.get(c.peer);
   if(d.t==='dash'){ const b=cl.blob; if(b&&b.alive&&!(b.dashCd>0)){ b.dashT=.3; b.dashCd=2.5; b.squish=.6; } return; }
   if(d.t==='ab'){ if(cl.blob&&cl.blob.alive) netRemoteAbility(cl.blob,String(d.k),+d.lv||1); return; }
   if(d.t==='look'){ cl.skin=(+d.skin|0)%SKINS.length; cl.hat=String(d.hat||'none'); if(cl.blob){ cl.blob.skin=cl.skin; cl.blob.hat=cl.hat; NET.conns.forEach(o=>o.meta.delete(cl.blob.id)); } } }
-function netNames(){ return [netName()+' (host)'].concat([...NET.conns.values()].map(o=>o.nm)); }
+function netNames(){ const l=[...NET.conns.values()].map(o=>o.nm); if(netName()!=='Server') l.unshift(netName()+' (host)'); return l; }
 function netSpawnRemote(cl){ if(cl.blob&&cl.blob.alive) return; const b=makeBlob(false);
   b.bot={t:1e9,thr:1,aggr:0,mode:'remote',target:null,tx:b.x,ty:b.y}; b.name=cl.nm; b.skin=cl.skin; b.hat=cl.hat; b.m=20; b.r=b.dr=rad(20); b.shield=3; b.netc=cl.c.peer; b.dx=1; b.dy=0; b.thr=0;
   blobs.push(b); cl.blob=b; cl.meta.clear(); NET.lastFood.set(cl.c.peer,null); cl.c.send({t:'you',id:b.id}); }
@@ -2456,7 +2456,7 @@ function netClientMsg(d){ if(!d||!d.t) return; NET.last=performance.now();
   if(d.t==='lob'){ NET.players=d.players; if(POPOPEN&&$('card').dataset.kind==='lobby') lobbyCard(); return; }
   if(d.t==='kill'){ if(!R0) return; R0.kills++; qAdd('kills',1); SFX.gulp(); shake=Math.max(shake,6); floatTxt(d.x,d.y,'+'+d.m,'#fde047',true); addFeed('You ate '+d.nm+'!');
     if(d.boss){ R0.boss=(R0.boss||0)+1; addGems(3); } if(R0.kills%3===0) floatTxt(P?P.x:d.x,(P?P.y-P.r:d.y)-30,['MEGA GULP!','UNSTOPPABLE!','BLOB BOSS!'][Math.min(2,R0.kills/3-1)],'#f472b6',true); return; }
-  if(d.t==='dead'){ if(STATE!=='play') return; const k=CB.get(d.by); killer=k?Object.assign({},k):(d.byn?{name:d.byn,skin:0,alive:false}:null); R0.deadM=P?P.m:20; R0.revived=true;
+  if(d.t==='dead'){ if(STATE!=='play') return; const k=CB.get(d.by); killer=k?Object.assign({},k):(d.byn?{name:d.byn,skin:0,alive:false}:null); R0.deadM=P?P.m:20;
     if(P){ burst(P.x,P.y,SKINS[P.skin].c[1],14,P.r); P.alive=false; } STATE='dying'; deadT=0; document.body.classList.add('playing-off'); SFX.die(); shake=14; if(d.byn) addFeed(d.byn+' ate you!'); return; }
   if(d.t==='feed'){ if(d.ai===NET.myId||d.bi===NET.myId) return; addFeed(d.a+' ate '+d.b+'!'); return; } }
 function netApply(d){
@@ -2554,7 +2554,7 @@ Object.assign(ACT,{ online(){ if(NET.role){ if(NET.role==='host'&&!NET.go) lobby
   netcancel(){ NET.tok++; netLeave(); onlineCard(); },
   netleave(){ netLeave('You left the room'); closePop(); homeCard(); },
   netstart(){ NET.go=true; netBroadcast({t:'go'}); closePop(); startRound(); },
-  netlink(){ let link=location.href.split('?')[0]+'?room='+NET.code; try{ if(CG.ok&&CG.S.game.inviteLink) link=CG.S.game.inviteLink({room:NET.code}); }catch(_){}
+  netlink(){ const rc=NET.pub?'pub':NET.code; let link=location.href.split('?')[0]+'?room='+rc; try{ if(CG.ok&&CG.S.game.inviteLink) link=CG.S.game.inviteLink({room:rc}); }catch(_){}
     try{ navigator.clipboard.writeText(link); toast('Invite link copied!'); }catch(_){ toast(link); } } });
 /* start screen: ONLINE button + "you are online" strip */
 (function(){ const base=homeCard; homeCard=function(){ base(); const st=$('start'), pb=st.querySelector('button[data-a="play"]'); if(!pb) return;
@@ -2564,9 +2564,9 @@ Object.assign(ACT,{ online(){ if(NET.role){ if(NET.role==='host'&&!NET.go) lobby
     pb.after(w); bindActs(w); } }; })();
 /* opened from an invite link? jump straight into that room */
 (function(){ const base=boot; boot=async function(){ const r=await base(); let room=null;
-  try{ if(CG.ok&&CG.S.game.getInviteParam) room=CG.S.game.getInviteParam('room'); }catch(_){}
+  try{ if(CG.ok&&CG.S.game.getInviteParam) room=CG.S.game.getInviteParam('room')||CG.S.game.getInviteParam('roomName'); }catch(_){}
   try{ if(!room) room=new URLSearchParams(location.search).get('room'); }catch(_){}
-  if(room&&/^[A-Za-z]{4}$/.test(room)) setTimeout(()=>netJoin(room),600); return r; }; })();
+  if(room) setTimeout(()=>{ room=String(room); if(/^[A-Za-z]{4}$/.test(room)||room==='pub') netJoin(room); else netQuick(); },600); return r; }; })();
 addEventListener('beforeunload',()=>{ try{ if(NET.role==='host') netBroadcast({t:'bye'}); NET.peer&&NET.peer.destroy(); }catch(_){} });
 
 /* ---------- LEAVE GAME (Settings during a round) - works offline too ---------- */
@@ -2729,6 +2729,27 @@ function netAfkSync(){ const want=!!(NET.role==='client'&&POPOPEN&&STATE==='play
   if(NET.role==='host'){ const now=Date.now(); NET.conns.forEach(cl=>{ const b=cl.blob; if(!b||!b.alive||!cl.afk) return; if(now-cl.afk>30000){ cl.afk=0; return; } b.shield=Math.max(b.shield,.5); cl.inp.thr=0; b.thr=0; });
     if(POPOPEN&&STATE==='play'&&P&&P.alive) P.shield=Math.max(P.shield,.5); }
   base(dt); }; })();
+
+/* ================= CRAZYGAMES MULTIPLAYER RULES =================
+   1) online you show your CrazyGames username (friends must recognise you); a custom name is only used when you are not logged in
+   2) tell CrazyGames which room you are in (updateRoom) so its Join/Invite buttons work, leftRoom when you leave
+   3) joining from the CrazyGames UI (join listener / instant multiplayer) goes straight into the room, no menus */
+let CGNAME=null;
+(function(){ const base=boot; boot=async function(){ const was=PNAME; const r=await base(); try{ if(CG.ok&&CG.S.user) Promise.resolve(CG.S.user.getUser()).then(u=>{ if(u&&u.username) CGNAME=String(u.username).slice(0,20); }).catch(()=>{}); }catch(_){}
+  try{ if(CG.ok&&CG.S.user&&CG.S.user.addAuthListener) CG.S.user.addAuthListener(u=>{ CGNAME=u&&u.username?String(u.username).slice(0,20):null; }); }catch(_){}
+  try{ if(CG.ok&&CG.S.game){ if(CG.S.game.addJoinRoomListener) CG.S.game.addJoinRoomListener(p=>{ const room=p&&String(p.room||p.roomName||''); if(NET.role) netLeave(); if(/^[A-Za-z]{4}$/.test(room)) netJoin(room); else netQuick(); });
+      if(CG.S.game.isInstantMultiplayer&&!(CG.S.game.getInviteParam&&(CG.S.game.getInviteParam('room')||CG.S.game.getInviteParam('roomName')))) setTimeout(()=>{ if(!NET.role) netCreate(); },700); } }catch(_){}
+  return r; }; })();
+(function(){ const base=netName; netName=function(){ return CGNAME||base(); }; })();
+function cgRoom(on){ try{ if(!(CG.ok&&CG.S.game)) return; if(on&&CG.S.game.updateRoom){ const code=NET.pub?'pub':NET.code; CG.S.game.updateRoom({roomId:String(NET.code||code),isJoinable:true,inviteParams:{room:code,roomName:code}}); }
+    else if(!on&&CG.S.game.leftRoom) CG.S.game.leftRoom(); }catch(_){} }
+(function(){ const base=netAsClient; netAsClient=function(p,c,wel,pub){ base(p,c,wel,pub); cgRoom(true); }; })();
+(function(){ const base=netAsHost; netAsHost=function(p,code,pub){ base(p,code,pub); cgRoom(true); }; })();
+(function(){ const base=netLeave; netLeave=function(msg){ const was=!!NET.role; base(msg); if(was) cgRoom(false); }; })();
+/* invite links / params: quick-match rooms share as "pub" */
+(function(){ const base=netJoin; netJoin=function(code){ if(String(code).toLowerCase()==='pub'){ netQuick(); return; } return base(code); }; })();
+/* settings: say which name other players see */
+(function(){ const base=settingsCard; settingsCard=function(still){ base(still); const r=document.querySelector('#card .nickrow'); if(r&&CGNAME&&!r.querySelector('.cgnote')) r.insertAdjacentHTML('afterend','<p class="cgnote" style="font-size:11px;opacity:.8;margin:-4px 0 6px">Online, other players see your CrazyGames name: <b>'+esc(CGNAME)+'</b></p>'); }; })();
 
 /* ================= LOOKS PASS: shiny collection cards (skins / powers / hats / trails / pets) + nicer pets ================= */
 (function(){
