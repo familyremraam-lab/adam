@@ -2718,6 +2718,18 @@ function netHostAdm(cl,d){ const b=cl.blob, k=String(d.k||''), v=d.v;
   NET.conns.forEach(cl=>{ const b=cl.blob; if(!b||!b.alive) return; if(cl.god) b.shield=Math.max(b.shield,.6); if(cl.nocd){ b.abCd=0; b.dashCd=0; } if(cl.spd) pre.push([b,b.x,b.y]); });
   base(dt); for(const [b,x,y] of pre){ b.x=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.x+(b.x-x)*1.2)); b.y=Math.max(b.r*.5,Math.min(WORLD-b.r*.5,b.y+(b.y-y)*1.2)); } }; })();
 
+/* ---------- SAFE MENU ONLINE: the world can't pause, so while a menu is open your blob stops and gets a shield (max 30 s) ---------- */
+(function(){ const base=playerInput; playerInput=function(){ if(window.NETLIVE&&POPOPEN&&P){ P.thr=0; return; } base(); }; })();
+let NETAFK=false;
+function netAfkSync(){ const want=!!(NET.role==='client'&&POPOPEN&&STATE==='play'&&P&&P.alive); if(want===NETAFK) return; NETAFK=want; try{ NET.hostConn&&NET.hostConn.send({t:'afk',on:want}); }catch(_){} }
+(function(){ const base=openPop; openPop=function(h,s){ base(h,s); netAfkSync(); }; })();
+(function(){ const base=closePop; closePop=function(){ base(); netAfkSync(); }; })();
+(function(){ const base=netHostMsg; netHostMsg=function(c,d){ if(d&&d.t==='afk'){ const cl=NET.conns.get(c.peer); if(cl) cl.afk=d.on?Date.now():0; return; } base(c,d); }; })();
+(function(){ const base=update; update=function(dt){
+  if(NET.role==='host'){ const now=Date.now(); NET.conns.forEach(cl=>{ const b=cl.blob; if(!b||!b.alive||!cl.afk) return; if(now-cl.afk>30000){ cl.afk=0; return; } b.shield=Math.max(b.shield,.5); cl.inp.thr=0; b.thr=0; });
+    if(POPOPEN&&STATE==='play'&&P&&P.alive) P.shield=Math.max(P.shield,.5); }
+  base(dt); }; })();
+
 /* ================= LOOKS PASS: shiny collection cards (skins / powers / hats / trails / pets) + nicer pets ================= */
 (function(){
 const css=document.createElement('style');
