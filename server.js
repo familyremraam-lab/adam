@@ -21,7 +21,7 @@ async function checkTicket(tok){ try{ const [h,p,sg]=String(tok||'').split('.');
 const PORT=process.env.PORT||8790;
 const HTML=fs.readFileSync(path.join(__dirname,'game.html'),'utf8');
 const TICK=1/20;                          /* the world moves 20 times a second (players smooth it out) */
-const MAX_PUB=16, MAX_ROOM=8, MAX_WORLDS=6, EMPTY_MS=90*1000;
+const MAX_PUB=24, MAX_ROOM=16, MAX_WORLDS=6, EMPTY_MS=90*1000;
 const worlds=new Map();                   /* room id -> world */
 let nextConn=1;
 
@@ -72,6 +72,9 @@ function srvTick(dt){ if(NET.conns.size) update(dt); }
 /* ---------- web page + WebSockets ---------- */
 const server=http.createServer((req,res)=>{
   res.writeHead(200,{'Content-Type':'text/plain','Access-Control-Allow-Origin':'*'});
+  if(req.url.startsWith('/roomcheck')){ const c=(new URL(req.url,'http://x').searchParams.get('c')||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4); res.end(worlds.has(c)?'yes':'no'); return; }
+  if(req.url.startsWith('/rooms')){
+    res.end(JSON.stringify([...worlds.values()].filter(W=>W.ready&&(W.pub||W.open)).map(W=>({room:W.id,pub:W.pub,name:W.pub?'Quick Match '+W.id.slice(3):(W.owner||'Friends')+'\x27s room',players:W.conns.size,max:W.pub?MAX_PUB:MAX_ROOM,names:(()=>{ try{ return W.win.eval('[...NET.conns.values()].map(o=>o.nm).slice(0,8)'); }catch(_){ return []; } })()})))); return; }
   if(req.url.startsWith('/status')){ res.end(JSON.stringify([...worlds.values()].map(W=>({room:W.id,players:W.conns.size})))); return; }
   res.end('Blob Party server is awake! Rooms: '+worlds.size); });
 const wss=new WebSocketServer({server,maxPayload:64*1024});
@@ -85,14 +88,16 @@ wss.on('connection',ws=>{
   ws.on('message',raw=>{ let d; try{ d=JSON.parse(raw); }catch(_){ return; } if(!d||typeof d.t!=='string') return;
     if(!W){                                           /* first message picks the room */
       if(d.t!=='room') return; let room=String(d.room||'');
-      if(room==='pub'){ room=null; for(const w of worlds.values()) if(w.pub&&w.conns.size<MAX_PUB){ room=w.id; break; }
+      if(/^pub[0-9]+$/.test(room)&&worlds.has(room)&&worlds.get(room).conns.size<MAX_PUB){ /* join that exact Quick Match arena from the server list */ }
+      else if(room==='pub'){ room=null; for(const w of worlds.values()) if(w.pub&&w.conns.size<MAX_PUB){ room=w.id; break; }
         if(!room){ let n=1; while(worlds.has('pub'+n)) n++; room='pub'+n; } }
       else if(room==='new'){ if(worlds.size>=MAX_WORLDS){ ws.send(JSON.stringify({t:'nope',why:'busy'})); ws.close(); return; } do{ room=code4(); }while(worlds.has(room)); }
       else { room=room.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4); if(!worlds.has(room)){ ws.send(JSON.stringify({t:'nope',why:'noroom'})); ws.close(); return; } }
-      W=worlds.get(room)||(worlds.size<MAX_WORLDS?makeWorld(room):null);
+      const isNew=!worlds.has(room); W=worlds.get(room)||(worlds.size<MAX_WORLDS?makeWorld(room):null); if(W&&isNew&&!W.pub) W.open=!!d.open;
       if(!W){ ws.send(JSON.stringify({t:'nope',why:'busy'})); ws.close(); return; }
       c={peer:id,open:true,send:m=>{ if(ws.readyState===1) ws.send(JSON.stringify(m)); },close:()=>{ try{ ws.close(); }catch(_){} },on(){},off(){}};
       W.conns.set(id,c); ws.send(JSON.stringify({t:'room',room:W.id,pub:W.pub})); log(id,'joined',W.id,'('+W.conns.size+')'); return; }
+    if(d.t==='hi'&&!W.owner&&!W.pub) W.owner=String(d.nm||'').replace(/[<>]/g,'').slice(0,16);
     if(d.t==='adm'){ (async()=>{ if(!c.admin){ if(ADMIN_ANY||(ADMIN_KEY.length>=20&&typeof d.key==='string'&&d.key.length===ADMIN_KEY.length&&crypto.timingSafeEqual(Buffer.from(d.key),Buffer.from(ADMIN_KEY)))){ c.admin=true; log(id,'is admin (key)'); } else { const pl=await checkTicket(d.tok); if(pl&&ADMINS.includes(String(pl.username||'').toLowerCase())){ c.admin=true; log(id,'is admin',pl.username); } } }
         delete d.tok; delete d.key; if(c.admin) toWorld(d); else c.send({t:'admno'}); })(); return; }
     toWorld(d); });

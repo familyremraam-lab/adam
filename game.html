@@ -495,7 +495,7 @@ function iconCanvas(k,size){ const key=k+size; if(ICONCV[key]) return ICONCV[key
 
 /* ================= BLOB PARTY.IO - the game ================= */
 const $=id=>document.getElementById(id);
-const cv=$('cv'), g=cv.getContext('2d');
+const cv=$('cv'); let g=cv.getContext('2d');   /* let: the HUD is drawn on its own canvas a few times a second (speed) */
 if(!CanvasRenderingContext2D.prototype.roundRect) CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){ r=Math.min(r,w/2,h/2); this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r); this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); this.closePath(); };
 let DPR=1, W=0, H=0;
 const MAXM=1e6;                                                     /* mass can reach 1M, but size grows slowly past 5K so it fits the arena */
@@ -781,7 +781,7 @@ function update(dt){
   const base=camBase(), z=base*Math.pow(28/Math.max(28,fr),.55);
   CAM.z+=(z-CAM.z)*Math.min(1,dt*2.5);
 }
-const camBase=()=>Math.max(Math.min(W,H)/620,Math.sqrt(W*H)/720);
+const camBase=()=>Math.max(Math.min(W,H)/620,Math.sqrt(W*H)/720)*(TOUCH||window.TOUCHNOW?.82:1);   /* phones see a bit more of the arena */
 function spawnBoss(){ const o=makeBlob(false); let best=null, bd=0;
   for(let k=0;k<20;k++){ const x=rnd(300,WORLD-300), y=rnd(300,WORLD-300), d=Math.hypot(x-P.x,y-P.y); if(d>bd&&d<2200){ bd=d; best=[x,y]; } }
   if(best){ o.x=best[0]; o.y=best[1]; } o.m=P.m*D().boss; o.r=o.dr=rad(o.m); o.boss=true; o.name='BOSS '+o.name; o.bot.aggr=1.3; o.bot.thr=1;
@@ -854,7 +854,7 @@ function draw(){
   /* ---- HUD (screen space) ---- */
   g.setTransform(DPR,0,0,DPR,0,0);
   if(STATE==='play'||STATE==='dying') drawHUD();
-  if(TOUCH&&STATE==='play'){ const jb=joyBase(), j=IN.joy||{x0:jb.x,y0:jb.y,x:jb.x,y:jb.y}; { const dx=j.x-j.x0, dy=j.y-j.y0, L=Math.hypot(dx,dy), k=L>60?60/L:1; j.kx=j.x0+dx*k; j.ky=j.y0+dy*k; } g.globalAlpha=.5; g.fillStyle='rgba(255,255,255,.15)'; g.strokeStyle='#fff'; g.lineWidth=3;
+  if((TOUCH||window.TOUCHNOW)&&STATE==='play'){ const jb=joyBase(), j=IN.joy||{x0:jb.x,y0:jb.y,x:jb.x,y:jb.y}; { const dx=j.x-j.x0, dy=j.y-j.y0, L=Math.hypot(dx,dy), k=L>60?60/L:1; j.kx=j.x0+dx*k; j.ky=j.y0+dy*k; } g.globalAlpha=.5; g.fillStyle='rgba(255,255,255,.15)'; g.strokeStyle='#fff'; g.lineWidth=3;
     g.beginPath(); g.arc(j.x0,j.y0,70,0,6.283); g.fill(); g.stroke(); g.globalAlpha=IN.joy?.85:.45; g.fillStyle='#fff'; g.beginPath(); g.arc(j.kx,j.ky,30,0,6.283); g.fill(); g.globalAlpha=1; }
   if(P) { const b=$('dashBtn'); const p=P.dashCd>0?Math.max(0,P.dashCd/2.5*100):0; b.style.setProperty('--p',p+'%'); b.classList.toggle('cd',p>0); b.classList.toggle('ready',p<=0); const cn=b.querySelector('.cdn'), tx=p>0?Math.ceil(P.dashCd)+'':''; if(cn.textContent!==tx) cn.textContent=tx; }
   abilButton();
@@ -2352,7 +2352,7 @@ Object.assign(ACT,{ rst1(){ resetCard(); }, rstno(){ settingsCard(true); },
 window.NETLIVE=false;
 const NET={tok:0,role:null,peer:null,conns:new Map(),code:null,pub:false,go:false,myId:0,mine:null,hostConn:null,last:0,inT:0,snapT:0,lastFood:new Map(),prevMode:null,cb:new Map(),waitSpawn:false};
 const NET_PFX='blobparty-v2-', NET_PUB=6, SNAPDT=1/10; let NET_MAX=8;
-const SRV_HTTP=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:8790':'https://blob-party-server.onrender.com', SRV_WS=SRV_HTTP.replace(/^http/,'ws');
+let SRV_HTTP=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:8790':'https://blob-party-server.onrender.com', SRV_WS=SRV_HTTP.replace(/^http/,'ws');
 function netName(){ return PNAME&&PNAME!=='You'?PNAME:(S.netName||(S.netName='Blob'+(1000+((Math.random()*9000)|0)))); }
 let FID=1;
 (function(){ const base=newFood; newFood=function(o){ const f=base(o); f.id=FID++; return f; }; })();
@@ -2809,6 +2809,165 @@ ACT.chattgl=()=>{ S.chatOff=!S.chatOff; save(); if(S.chatOff){ CHAT.length=0; ch
 '@media (pointer:coarse){ #chatbox{bottom:auto;top:34%} #chatbar{bottom:auto;top:12px} }';
 document.head.appendChild(css); }
 
+/* ================= PHONES + SPEED =================
+   - touch is detected on the first touch too (some phones/tablets don't report it at load)
+   - "how to play" shows the JOYSTICK / DASH / POWER buttons, also in online rounds
+   - bigger thumb buttons, little vibrations, phones see a bit more of the arena (camBase)
+   - speed: the HUD is drawn on its own canvas ~20x a second instead of every frame, sharper-than-needed screens are capped,
+     glow effects are skipped on LOW, and particles are capped */
+window.TOUCHNOW=TOUCH;
+addEventListener('pointerdown',e=>{ if(e.pointerType==='touch'&&!window.TOUCHNOW){ window.TOUCHNOW=true; document.body.classList.add('touchmode'); resize(); } },true);
+if(TOUCH) document.body.classList.add('touchmode');
+const isTouch=()=>TOUCH||window.TOUCHNOW;
+
+/* ---------- how to play (phones get the joystick picture) ---------- */
+(function(){ const base=showControls; showControls=function(){ if(!isTouch()){ base(); return; } if(document.getElementById('ctlHelp')) return;
+  const el=document.createElement('div'); el.id='ctlHelp';
+  el.innerHTML='<div class="crow"><span class="joyic"><i></i></span><b>JOYSTICK</b> (bottom left) to move</div>'+
+    '<div class="crow"><span class="kc round">DASH</span><b>TAP</b> to zoom</div>'+(S.abEq?'<div class="crow"><span class="kc round">&#9889;</span><b>POWER</b> button</div>':'');
+  document.body.appendChild(el); setTimeout(()=>{ if(typeof hideControls==='function') hideControls(); },9000); }; })();
+(function(){ const base=netClientSpawn; netClientSpawn=function(o){ base(o); if(S.rounds<=3&&!(o&&o.rev)) setTimeout(()=>{ if(STATE==='play') showControls(); },900); }; })();
+/* the joystick glows with "MOVE" for the first rounds */
+(function(){ const base=draw; draw=function(){ base(); if(!isTouch()||STATE!=='play'||S.rounds>3||IN.joy) return;
+  g.setTransform(DPR,0,0,DPR,0,0); const jb=joyBase(), k=.5+.5*Math.sin(T*5);
+  g.lineWidth=4; g.strokeStyle='rgba(253,224,71,'+(.4+.5*k)+')'; g.beginPath(); g.arc(jb.x,jb.y,70+6*k,0,6.283); g.stroke();
+  hudText('MOVE',jb.x,jb.y-92,18,'#fde047','center'); }; })();
+
+/* ---------- little vibrations (Android) ---------- */
+const buzz=ms=>{ try{ if(isTouch()&&navigator.vibrate&&S.sfx!==0) navigator.vibrate(ms); }catch(_){} };
+(function(){ const a=SFX.gulp, d=SFX.die, s=SFX.dash; SFX.gulp=function(){ buzz(18); return a&&a.apply(SFX,arguments); }; SFX.die=function(){ buzz([60,40,120]); return d&&d.apply(SFX,arguments); }; SFX.dash=function(){ buzz(8); return s&&s.apply(SFX,arguments); }; })();
+
+/* ---------- SPEED ---------- */
+/* 1) phones with very sharp screens draw up to 9x the pixels for no visible gain: cap it (AUTO/LOW) */
+(function(){ const base=resize; resize=function(){ base(); const m=(S&&S.gfx)||0; if(isTouch()&&m!==1){ const cap=GFXQ()?1.5:1; if(DPR>cap){ DPR=cap; cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); } } }; })();
+addEventListener('resize',()=>setTimeout(()=>resize(),0));   /* rotating the phone re-applies the cap */
+/* 2) no blurry glows on LOW graphics (shadowBlur is one of the slowest things a canvas can do) */
+{ const proto=Object.getPrototypeOf(g), desc=Object.getOwnPropertyDescriptor(proto,'shadowBlur');
+  if(desc&&desc.set) Object.defineProperty(g,'shadowBlur',{ get(){ return desc.get.call(this); }, set(v){ desc.set.call(this,GFXQ()===0?0:v); }, configurable:true }); }
+/* 3) the HUD (leaderboard, mass, minimap, event pill...) is redrawn 20x a second on its own canvas, then just copied every frame */
+const HUDC=document.createElement('canvas'), HUDG=HUDC.getContext('2d'); let HUDT=0, HUDK='';
+(function(){ const base=drawHUD; drawHUD=function(){
+  if(GFXQ()!==0&&!isTouch()){ base(); return; }                 /* fast computers on HIGH: draw live, as before */
+  const now=performance.now(), key=cv.width+'x'+cv.height;
+  if(now-HUDT>50||key!==HUDK){ HUDT=now; if(key!==HUDK){ HUDC.width=cv.width; HUDC.height=cv.height; HUDK=key; }
+    const main=g; g=HUDG; try{ g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,HUDC.width,HUDC.height); g.setTransform(DPR,0,0,DPR,0,0); base(); } finally{ g=main; } }
+  g.save(); g.setTransform(1,0,0,1,0,0); g.drawImage(HUDC,0,0); g.restore(); g.setTransform(DPR,0,0,DPR,0,0); }; })();
+/* 4) cap particles + floating texts (big fights could spawn hundreds) */
+(function(){ const base=update; update=function(dt){ base(dt); if(parts.length>(GFXQ()?260:120)) parts.splice(0,parts.length-(GFXQ()?260:120)); if(floats.length>40) floats.splice(0,floats.length-40); }; })();
+
+{ const css=document.createElement('style'); css.textContent=
+'body.touchmode #dashBtn{width:108px!important;height:108px!important;right:20px;bottom:26px}'+
+'body.touchmode #abBtn{width:84px!important;height:84px!important;right:34px;bottom:150px}'+
+'body.touchmode #gear{width:56px;height:56px}'+
+'.joyic{width:42px;height:42px;border-radius:50%;border:3px solid #fff;background:rgba(255,255,255,.15);position:relative;display:inline-block}'+
+'.joyic i{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#fff;animation:joyic 1.6s ease-in-out infinite}'+
+'@keyframes joyic{0%,100%{transform:translate(0,0)}25%{transform:translate(8px,-6px)}50%{transform:translate(-6px,-8px)}75%{transform:translate(-8px,6px)}}'+
+'@media (max-height:560px){ body.touchmode #dashBtn{width:88px!important;height:88px!important} body.touchmode #abBtn{width:70px!important;height:70px!important;bottom:122px} }';
+document.head.appendChild(css); }
+/* the X close button sat on top of the coins/gems pill in popups with a top bar */
+{ const css=document.createElement('style'); css.textContent='.card:has(.xbtn) .topbar{padding-right:52px}.topbar .pillc{white-space:nowrap}'; document.head.appendChild(css); }
+
+/* ================= SERVER LIST: see the open rooms on the game server and join one =================
+   Quick Match arenas + PUBLIC friend rooms are listed (private rooms stay code-only). */
+/* rooms made with "PUBLIC" tell the server they may be listed */
+NET.openNext=false;
+(function(){ const origSend=WebSocket.prototype.send; WebSocket.prototype.send=function(d){ try{ if(typeof d==='string'&&d.indexOf('"t":"room"')>0&&d.indexOf('"room":"new"')>0&&NET.openNext){ const o=JSON.parse(d); o.open=true; d=JSON.stringify(o); } }catch(_){} return origSend.call(this,d); }; })();
+async function roomsFetch(){ try{ const r=await Promise.race([fetch(SRV_HTTP+'/rooms?'+Date.now(),{cache:'no-store'}),new Promise((_,x)=>setTimeout(()=>x(1),8000))]); return await r.json(); }catch(_){ return null; } }
+async function roomsCard(){ const tok=++NET.tok; netCard('Loading the server list...'); let list=await roomsFetch();
+  if(!list&&tok===NET.tok){ netCard('Waking up the game server...<br><small>This can take up to 1 minute the first time.</small>'); if(await netWake(tok)) list=await roomsFetch(); }
+  if(tok!==NET.tok) return;
+  if(!list){ toast('Could not reach the game server - try again!'); onlineCard(); return; }
+  list.sort((a,b)=>(b.players-a.players)||(b.pub-a.pub));
+  const total=list.reduce((n,r)=>n+r.players,0), flag={eu:"🇪🇺",us:"🇺🇸",asia:"🌏"};
+  const rows=list.length?list.map(r=>{ const full=r.players>=r.max, pct=Math.round(r.players/r.max*100), rg=(typeof regById==="function"&&regById(r.region))||null;
+      const names=(r.names||[]).slice(0,5).map(n=>'<i>'+esc(n)+'</i>').join("")+((r.names||[]).length>5?'<i>+'+((r.names||[]).length-5)+'</i>':"");
+      return '<div class="rcard'+(r.pub?" pub":"")+(r.players?" live":"")+'"><div class="ricon">'+(r.pub?"🌐":"🏠")+'</div><div class="rinfo">'+
+        '<div class="rtop"><b>'+esc(r.name)+'</b>'+(rg?'<span class="rgn">'+(flag[rg.id]||"")+" "+rg.nm+'</span>':"")+(r.players?'<span class="rlive">LIVE</span>':"")+'</div>'+
+        '<div class="rbar"><u style="width:'+pct+'%"></u><span>'+r.players+" / "+r.max+' players</span></div>'+
+        '<div class="rnames">'+(names||'<em>empty - be the first!</em>')+'</div></div>'+
+        '<button class="btn '+(full?"gray":"")+' rjoin" data-a="roomjoin" data-r="'+esc(r.room)+'" data-p="'+(r.pub?1:0)+'" data-g="'+esc(r.region||"")+'"'+(full?" disabled":"")+'>'+(full?"FULL":"JOIN")+'</button></div>'; }).join("")
+    :'<div class="rempty"><div style="font-size:46px">💭</div><b>No rooms yet!</b><p>Press QUICK MATCH or make a public room.</p></div>';
+  openPop('<div class="ribh" style="background:linear-gradient(#22d3ee,#0e7490)"><h2>SERVER LIST</h2></div><div class="ronline"><span class="dotg"></span>'+total+' players online • '+list.length+' rooms</div><div class="roomlist">'+rows+'</div>'+
+    '<div class="row"><button class="btn blue small" data-a="roomsref">&#8635; REFRESH</button><button class="btn gold small" data-a="netcreatepub">+ PUBLIC ROOM</button></div><button class="btn gray small" data-a="online">BACK</button>',true);
+  $('card').dataset.kind='rooms'; }
+async function roomJoin(room,pub){ const r=await netServer(room,'Joining '+(pub?'Quick Match':'the room')+'...'); if(r.cancel) return;
+  if(r.c){ NET.viaServer=true; netAsClient(r.p,r.c,r.wel,!!pub); return; }
+  toast(r.err==='noroom'?'That room is gone - pick another one':'Could not join ('+r.err+')'); roomsCard(); }
+Object.assign(ACT,{ rooms(){ roomsCard(); }, roomsref(){ roomsCard(); },
+  roomjoin(el){ roomJoin(el.dataset.r,el.dataset.p==='1'); },
+  netcreatepub(){ NET.openNext=true; netCreate().finally(()=>{ NET.openNext=false; }); },
+  netcreate(){ NET.openNext=false; netCreate(); } });
+/* the PLAY ONLINE screen gets a SERVER LIST button + public/private room choice */
+(function(){ const base=onlineCard; onlineCard=function(){ base(); const c=$('card'), q=c.querySelector('[data-a="netquick"]'); if(!q) return;
+  const w=document.createElement('div'); w.innerHTML='<button class="btn blue" data-a="rooms">&#128203; SERVER LIST</button><p class="netsub">See every open room and join one</p>';
+  const sub=q.nextElementSibling; (sub||q).after(w); bindActs(w);
+  const cr=c.querySelector('[data-a="netcreate"]'); if(cr){ cr.textContent='CREATE PRIVATE ROOM'; const p=document.createElement('div'); p.innerHTML='<button class="btn gold" data-a="netcreatepub">CREATE PUBLIC ROOM</button>'; cr.before(p); bindActs(p);
+    const note=cr.nextElementSibling; if(note&&note.classList.contains('netsub')) note.textContent='Public rooms show in the server list - private rooms need the code'; } }; })();
+{ const css=document.createElement('style'); css.textContent=
+'.ronline{display:inline-flex;align-items:center;gap:7px;background:rgba(20,8,48,.6);border:2px solid rgba(255,255,255,.3);border-radius:99px;padding:3px 12px;font-weight:700;font-size:13px;margin:2px 0 6px}'+
+'.dotg{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 8px #4ade80;animation:pulse 1.2s ease-in-out infinite}'+
+'.roomlist{display:flex;flex-direction:column;gap:8px;margin:6px 0 10px;max-height:52vh;overflow:auto;padding:2px}'+
+'.rcard{display:flex;align-items:center;gap:10px;text-align:left;background:linear-gradient(135deg,#6d28d9,#3b0f8a);border:3px solid #fff;border-radius:16px;padding:8px 10px;box-shadow:0 0 0 3px #1c1233,0 5px 0 3px rgba(0,0,0,.3)}'+
+'.rcard.pub{background:linear-gradient(135deg,#0891b2,#0e3a5c)}.rcard.live{border-color:#4ade80}'+
+'.ricon{font-size:30px;width:46px;height:46px;flex:none;display:grid;place-items:center;background:rgba(255,255,255,.15);border-radius:12px}'+
+'.rinfo{flex:1;min-width:0}.rtop{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.rtop b{font-size:16px;text-shadow:0 2px 0 #1c1233}'+
+'.rgn{font-size:10px;font-weight:700;background:rgba(20,8,48,.6);border:2px solid rgba(255,255,255,.6);border-radius:8px;padding:0 6px}'+
+'.rlive{font-size:10px;font-weight:700;background:#16a34a;border:2px solid #fff;border-radius:8px;padding:0 6px;animation:pulse 1.2s ease-in-out infinite}'+
+'.rbar{position:relative;height:16px;background:rgba(0,0,0,.35);border-radius:99px;margin:5px 0 4px;overflow:hidden}.rbar u{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#4ade80,#fde047);border-radius:99px}'+
+'.rbar span{position:relative;display:block;text-align:center;font-size:11px;font-weight:700;line-height:16px;text-shadow:0 1px 0 #1c1233}'+
+'.rnames{display:flex;flex-wrap:wrap;gap:3px}.rnames i{font-style:normal;font-size:10px;font-weight:700;background:rgba(255,255,255,.18);border-radius:8px;padding:0 6px}.rnames em{font-size:11px;opacity:.8}'+
+'.rjoin{margin:0!important;flex:none;background:linear-gradient(#4ade80,#16a34a)!important;font-size:17px;padding:10px 14px}.rjoin[disabled]{background:#64748b!important}'+
+'.rempty{padding:14px 6px;opacity:.95}.rempty p{margin:4px 0 0;font-size:13px;opacity:.85}';
+document.head.appendChild(css); }
+
+/* ================= REGION SERVERS: Europe / USA / Asia =================
+   AUTO picks the fastest server that answers; a server that doesn't exist (yet) is simply skipped.
+   The server list shows rooms from every region; room codes are searched in every region. */
+const LOCALSRV=(location.hostname==='localhost'||location.hostname==='127.0.0.1');
+const REGIONS=[
+  {id:'eu',  nm:'Europe', url:LOCALSRV?'http://localhost:8790':'https://blob-party-eu.onrender.com'},
+  {id:'us',  nm:'USA',    url:LOCALSRV?'http://localhost:8790':'https://blob-party-server.onrender.com'},
+  {id:'asia',nm:'Asia',   url:LOCALSRV?'http://localhost:8790':'https://blob-party-asia.onrender.com'}];
+const regById=id=>REGIONS.find(r=>r.id===id);
+function useRegion(r){ if(!r) return; SRV_HTTP=r.url; SRV_WS=r.url.replace(/^http/,'ws'); NET.region=r; }
+useRegion(regById('us'));
+/* only a REAL Blob Party server counts (it answers with CORS + its text); dead/unmade addresses fail fast */
+async function regionPing(r,ms){ const t0=performance.now();
+  try{ const res=await Promise.race([fetch(r.url+'/?ping='+Date.now(),{cache:'no-store'}),new Promise((_,x)=>setTimeout(()=>x(1),ms||3500))]);
+    const t=await res.text(); return /Blob Party server/.test(t)?performance.now()-t0:1e9; }catch(_){ return 1e9; } }
+/* nobody answered quickly (all asleep)? guess from the clock's timezone */
+function regionGuess(){ const off=-new Date().getTimezoneOffset()/60; return off<=-2?'us':off>=5.5?'asia':'eu'; }
+let REGIONOK=false;
+async function regionReady(){
+  if(S.region&&S.region!=='auto'){ useRegion(regById(S.region)); REGIONOK=true; return; }
+  if(REGIONOK) return;
+  const seen={}, list=REGIONS.filter(r=>!seen[r.url]&&(seen[r.url]=1));
+  const pings=await Promise.all(list.map(r=>regionPing(r)));
+  let best=-1; pings.forEach((p,i)=>{ if(p<1e9&&(best<0||p<pings[best])) best=i; });
+  useRegion(best>=0?list[best]:(regById(regionGuess())||regById('us'))); REGIONOK=best>=0; }
+(function(){ const base=netServer; netServer=async function(room,msg){ netCard('Finding the fastest server...'); await regionReady(); return base(room,msg); }; })();
+/* a room code: look in every region until we find it */
+(function(){ const base=netJoin; netJoin=async function(code){ const c=String(code||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
+  if(String(code).toLowerCase()==='pub'||c.length<4||S.region&&S.region!=='auto') return base(code);
+  netCard('Looking for room '+c+'...');
+  for(const r of REGIONS){ try{ const l=await Promise.race([fetch(r.url+'/roomcheck?c='+c+'&t='+Date.now(),{cache:'no-store'}).then(x=>x.text()),new Promise((_,x)=>setTimeout(()=>x(1),4000))]);
+      if(l.trim()==='yes'){ useRegion(r); REGIONOK=true; break; } }catch(_){} }
+  return base(code); }; })();
+/* server list = rooms from ALL regions */
+roomsFetch=async function(){ const seen={}, list=REGIONS.filter(r=>!seen[r.url]&&(seen[r.url]=1)); let all=[], any=false;
+  await Promise.all(list.map(async r=>{ try{ const res=await Promise.race([fetch(r.url+'/rooms?'+Date.now(),{cache:'no-store'}),new Promise((_,x)=>setTimeout(()=>x(1),8000))]);
+      const j=await res.json(); any=true; for(const x of j){ x.region=r.id; all.push(x); } }catch(_){} }));
+  return any?all:null; };
+(function(){ const base=roomJoin; roomJoin=function(room,pub,region){ if(region){ useRegion(regById(region)); REGIONOK=true; } return base(room,pub); }; })();
+ACT.roomjoin=function(el){ roomJoin(el.dataset.r,el.dataset.p==='1',el.dataset.g); };
+/* PLAY ONLINE: pick a region (AUTO by default) */
+(function(){ const base=onlineCard; onlineCard=function(){ base(); const c=$('card'); if(c.querySelector('.regionrow')) return;
+  const cur=S.region||'auto', nm=cur==='auto'?'AUTO (fastest)':(regById(cur)||{nm:cur}).nm;
+  const w=document.createElement('div'); w.className='regionrow'; w.innerHTML='Server region: <button class="btn small blue" data-a="region" style="margin:0">&#127758; '+nm+'</button>';
+  const first=c.querySelector('p'); (first||c.firstChild).after(w); bindActs(w); }; })();
+ACT.region=()=>{ const order=['auto'].concat(REGIONS.map(r=>r.id)); const i=order.indexOf(S.region||'auto'); S.region=order[(i+1)%order.length]; REGIONOK=false; save(); onlineCard(); };
+{ const css=document.createElement('style'); css.textContent='.regionrow{display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:14px;margin:0 0 8px}.rgn{font-size:10px;background:#0e7490;border:2px solid #fff;border-radius:8px;padding:0 5px;vertical-align:middle}'; document.head.appendChild(css); }
+
 /* ================= LOOKS PASS: shiny collection cards (skins / powers / hats / trails / pets) + nicer pets ================= */
 (function(){
 const css=document.createElement('style');
@@ -2932,7 +3091,7 @@ const AR={
  /* settings */
  'SETTINGS':'الإعدادات','Sound effects':'المؤثرات الصوتية','Music':'الموسيقى','Graphics':'الرسومات','Language':'اللغة','AUTO':'تلقائي','HIGH':'عالية','LOW':'منخفضة',
  'AUTO keeps the game at # FPS. LOW = faster on slow computers and phones.':'التلقائي يحافظ على # إطار. المنخفضة = أسرع على الأجهزة البطيئة.',
- 'How to play':'طريقة اللعب','Chat closed - you can only be safe for # seconds':'أُغلقت الدردشة - يمكنك البقاء آمناً # ثانية فقط','Online chat':'الدردشة أونلاين','turned off by CrazyGames':'أوقفتها CrazyGames','Type a message...':'اكتب رسالة...','SEND':'إرسال','Your name':'اسمك','SAVE':'حفظ','Name saved!':'تم حفظ الاسم!','That name is not allowed':'هذا الاسم غير مسموح','Your name needs # letters or more':'اسمك يحتاج # أحرف أو أكثر','PLAY ONLINE':'العب أونلاين','QUICK MATCH':'مباراة سريعة','CREATE ROOM':'أنشئ غرفة','JOIN ROOM':'ادخل غرفة','LEAVE ROOM':'اخرج من الغرفة','START!':'ابدأ!','COPY INVITE LINK':'انسخ رابط الدعوة','LEAVE GAME':'اترك اللعبة','YOU LEFT THE GAME':'تركت اللعبة','LEAVE':'خروج','CANCEL':'إلغاء','Join random players online':'العب مع لاعبين عشوائيين','Get a code and play with your friends':'احصل على رمز والعب مع أصدقائك','Tell your friends this code:':'أعطِ أصدقاءك هذا الرمز:','Looking for players online...':'نبحث عن لاعبين...','Making your room...':'نجهز غرفتك...','# / # players':'# / # لاعبين','Invite link copied!':'تم نسخ رابط الدعوة!','You left the game':'تركت اللعبة','You left the room':'خرجت من الغرفة','The host left the game':'المضيف ترك اللعبة','You are the HOST - players will join you!':'أنت المضيف - سينضم اللاعبون إليك!','⚠ RESET EVERYTHING':'⚠ إعادة ضبط كل شيء','RESET EVERYTHING?':'إعادة ضبط كل شيء؟','NO, KEEP IT':'لا، احتفظ به','YES, RESET':'نعم، أعد الضبط','Everything was reset!':'تمت إعادة ضبط كل شيء!','You can NOT get them back!':'لا يمكنك استعادتها!','This deletes ALL your coins, gems, skins, hats, trails, pets, powers, levels, quests and Blob Pass stars.':'هذا يحذف كل عملاتك وجواهرك وشخصياتك وقبعاتك وآثارك وحيواناتك وقواك ومستوياتك ومهامك ونجوم التذكرة.','RESUME':'متابعة','OK':'حسناً','BACK':'رجوع','CLOSE':'إغلاق',
+ 'How to play':'طريقة اللعب','SERVER LIST':'قائمة السيرفرات','See every open room and join one':'شاهد كل الغرف المفتوحة وادخل واحدة','CREATE PUBLIC ROOM':'أنشئ غرفة عامة','CREATE PRIVATE ROOM':'أنشئ غرفة خاصة','+ PUBLIC ROOM':'+ غرفة عامة','Public rooms show in the server list - private rooms need the code':'الغرف العامة تظهر في القائمة - الغرف الخاصة تحتاج الرمز','nobody yet - be the first!':'لا أحد بعد - كن الأول!','JOIN':'ادخل','FULL':'ممتلئة','REFRESH':'تحديث','Loading the server list...':'نحمّل قائمة السيرفرات...','JOYSTICK':'عصا التحكم','(bottom left) to move':'(أسفل اليسار) للتحرك','That room is gone - pick another one':'هذه الغرفة لم تعد موجودة - اختر غيرها','Chat closed - you can only be safe for # seconds':'أُغلقت الدردشة - يمكنك البقاء آمناً # ثانية فقط','Online chat':'الدردشة أونلاين','turned off by CrazyGames':'أوقفتها CrazyGames','Type a message...':'اكتب رسالة...','SEND':'إرسال','Your name':'اسمك','SAVE':'حفظ','Name saved!':'تم حفظ الاسم!','That name is not allowed':'هذا الاسم غير مسموح','Your name needs # letters or more':'اسمك يحتاج # أحرف أو أكثر','PLAY ONLINE':'العب أونلاين','QUICK MATCH':'مباراة سريعة','CREATE ROOM':'أنشئ غرفة','JOIN ROOM':'ادخل غرفة','LEAVE ROOM':'اخرج من الغرفة','START!':'ابدأ!','COPY INVITE LINK':'انسخ رابط الدعوة','LEAVE GAME':'اترك اللعبة','YOU LEFT THE GAME':'تركت اللعبة','LEAVE':'خروج','CANCEL':'إلغاء','Join random players online':'العب مع لاعبين عشوائيين','Get a code and play with your friends':'احصل على رمز والعب مع أصدقائك','Tell your friends this code:':'أعطِ أصدقاءك هذا الرمز:','Looking for players online...':'نبحث عن لاعبين...','Making your room...':'نجهز غرفتك...','# / # players':'# / # لاعبين','Invite link copied!':'تم نسخ رابط الدعوة!','You left the game':'تركت اللعبة','You left the room':'خرجت من الغرفة','The host left the game':'المضيف ترك اللعبة','You are the HOST - players will join you!':'أنت المضيف - سينضم اللاعبون إليك!','⚠ RESET EVERYTHING':'⚠ إعادة ضبط كل شيء','RESET EVERYTHING?':'إعادة ضبط كل شيء؟','NO, KEEP IT':'لا، احتفظ به','YES, RESET':'نعم، أعد الضبط','Everything was reset!':'تمت إعادة ضبط كل شيء!','You can NOT get them back!':'لا يمكنك استعادتها!','This deletes ALL your coins, gems, skins, hats, trails, pets, powers, levels, quests and Blob Pass stars.':'هذا يحذف كل عملاتك وجواهرك وشخصياتك وقبعاتك وآثارك وحيواناتك وقواك ومستوياتك ومهامك ونجوم التذكرة.','RESUME':'متابعة','OK':'حسناً','BACK':'رجوع','CLOSE':'إغلاق',
  'Move the mouse (or WASD) to steer. Click or SPACE to DASH. E = ability (like SPLIT or SHOOT).':'حرّك الفأرة (أو WASD) للتوجيه. انقر أو مسافة للاندفاع. E = القوة (مثل الانقسام أو الإطلاق).',
  'Drag anywhere to move. Tap DASH to zoom.':'اسحب في أي مكان للتحرك. اضغط اندفاع للانطلاق.','Eat dots to grow. Eat blobs smaller than you. Run from bigger ones!':'كُل النقاط لتكبر. كُل البلوبات الأصغر منك. واهرب من الأكبر!',
  /* daily + quests */
