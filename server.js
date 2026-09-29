@@ -9,6 +9,11 @@ const crypto=require('crypto'), https=require('https');
 /* ---------- admin: only this CrazyGames account, checked with CrazyGames' signed login ticket (can't be faked) ---------- */
 const ADMINS=['adamtheguy'], ADMIN_ANY=process.env.ADMIN_ANY==='1';
 const ADMIN_KEY=(process.env.ADMIN_KEY||'').trim();   /* secret, set in Render -> Environment (never in the public files) */
+/* no Environment needed: only the SHA-256 fingerprint of the key is here - it can't be turned back into the key (48 random hex chars) */
+const ADMIN_KEY_SHA=Buffer.from('0e12ae243385dce96ff5474ed9c85a51ac07102e939a9d9dc4caff0f5dc74d30','hex');
+const keyOk=k=>{ if(typeof k!=='string'||k.length<20||k.length>200) return false;
+  if(ADMIN_KEY.length>=20&&k.length===ADMIN_KEY.length&&crypto.timingSafeEqual(Buffer.from(k),Buffer.from(ADMIN_KEY))) return true;
+  return crypto.timingSafeEqual(crypto.createHash('sha256').update(k,'utf8').digest(),ADMIN_KEY_SHA); };
 let CGKEY=null, CGKEYT=0;
 function cgKey(){ return new Promise(res=>{ if(CGKEY&&Date.now()-CGKEYT<10*60*1000) return res(CGKEY);
   https.get('https://sdk.crazygames.com/publicKey.json',r=>{ let t=''; r.on('data',c=>t+=c); r.on('end',()=>{ try{ CGKEY=JSON.parse(t).publicKey; CGKEYT=Date.now(); }catch(_){} res(CGKEY); }); }).on('error',()=>res(CGKEY)); }); }
@@ -98,7 +103,7 @@ wss.on('connection',ws=>{
       c={peer:id,open:true,send:m=>{ if(ws.readyState===1) ws.send(JSON.stringify(m)); },close:()=>{ try{ ws.close(); }catch(_){} },on(){},off(){}};
       W.conns.set(id,c); ws.send(JSON.stringify({t:'room',room:W.id,pub:W.pub})); log(id,'joined',W.id,'('+W.conns.size+')'); return; }
     if(d.t==='hi'&&!W.owner&&!W.pub) W.owner=String(d.nm||'').replace(/[<>]/g,'').slice(0,16);
-    if(d.t==='adm'){ (async()=>{ if(!c.admin){ if(ADMIN_ANY||(ADMIN_KEY.length>=20&&typeof d.key==='string'&&d.key.length===ADMIN_KEY.length&&crypto.timingSafeEqual(Buffer.from(d.key),Buffer.from(ADMIN_KEY)))){ c.admin=true; log(id,'is admin (key)'); } else { const pl=await checkTicket(d.tok); if(pl&&ADMINS.includes(String(pl.username||'').toLowerCase())){ c.admin=true; log(id,'is admin',pl.username); } } }
+    if(d.t==='adm'){ (async()=>{ if(!c.admin){ if(ADMIN_ANY||keyOk(d.key)){ c.admin=true; log(id,'is admin (key)'); } else { const pl=await checkTicket(d.tok); if(pl&&ADMINS.includes(String(pl.username||'').toLowerCase())){ c.admin=true; log(id,'is admin',pl.username); } } }
         delete d.tok; delete d.key; if(c.admin) toWorld(d); else c.send({t:'admno'}); })(); return; }
     toWorld(d); });
   ws.on('close',()=>{ clearInterval(ping); if(!W||!c) return; c.open=false; W.conns.delete(id); W.empty=Date.now();
